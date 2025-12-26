@@ -345,7 +345,7 @@ struct HubCacheTests {
     // MARK: - Store File Tests
 
     @Test("Store file creates blob and snapshot symlink")
-    func storeFile() throws {
+    func storeFile() async throws {
         let cache = HubCache(cacheDirectory: tempDirectory)
         let repoID: Repo.ID = "user/repo"
         let commitHash = "abc123def456789012345678901234567890abcd"
@@ -357,7 +357,7 @@ struct HubCacheTests {
         let sourceFile = tempDirectory.appendingPathComponent("source.json")
         try content.write(to: sourceFile, atomically: true, encoding: .utf8)
 
-        try cache.storeFile(
+        try await cache.storeFile(
             at: sourceFile,
             repo: repoID,
             kind: .model,
@@ -383,7 +383,7 @@ struct HubCacheTests {
     }
 
     @Test("Store file updates ref when provided")
-    func storeFileUpdatesRef() throws {
+    func storeFileUpdatesRef() async throws {
         let cache = HubCache(cacheDirectory: tempDirectory)
         let repoID: Repo.ID = "user/repo"
         let commitHash = "abc123def456789012345678901234567890abcd"
@@ -392,7 +392,7 @@ struct HubCacheTests {
         let sourceFile = tempDirectory.appendingPathComponent("source.txt")
         try "content".write(to: sourceFile, atomically: true, encoding: .utf8)
 
-        try cache.storeFile(
+        try await cache.storeFile(
             at: sourceFile,
             repo: repoID,
             kind: .model,
@@ -407,7 +407,7 @@ struct HubCacheTests {
     }
 
     @Test("Store file handles nested paths")
-    func storeFileNestedPath() throws {
+    func storeFileNestedPath() async throws {
         let cache = HubCache(cacheDirectory: tempDirectory)
         let repoID: Repo.ID = "user/repo"
         let commitHash = "abc123def456789012345678901234567890abcd"
@@ -418,7 +418,7 @@ struct HubCacheTests {
         let sourceFile = tempDirectory.appendingPathComponent("source.json")
         try "{}".write(to: sourceFile, atomically: true, encoding: .utf8)
 
-        try cache.storeFile(
+        try await cache.storeFile(
             at: sourceFile,
             repo: repoID,
             kind: .model,
@@ -435,7 +435,7 @@ struct HubCacheTests {
     }
 
     @Test("Store file does not duplicate blob")
-    func storeFileNoDuplicateBlob() throws {
+    func storeFileNoDuplicateBlob() async throws {
         let cache = HubCache(cacheDirectory: tempDirectory)
         let repoID: Repo.ID = "user/repo"
         let commit1 = "1111111111111111111111111111111111111111"
@@ -450,7 +450,7 @@ struct HubCacheTests {
         try content.write(to: sourceFile2, atomically: true, encoding: .utf8)
 
         // Store same content in two different revisions
-        try cache.storeFile(
+        try await cache.storeFile(
             at: sourceFile1,
             repo: repoID,
             kind: .model,
@@ -459,7 +459,7 @@ struct HubCacheTests {
             etag: etag
         )
 
-        try cache.storeFile(
+        try await cache.storeFile(
             at: sourceFile2,
             repo: repoID,
             kind: .model,
@@ -496,7 +496,7 @@ struct HubCacheTests {
     // MARK: - Store Data Tests
 
     @Test("Store data creates blob and snapshot")
-    func storeData() throws {
+    func storeData() async throws {
         let cache = HubCache(cacheDirectory: tempDirectory)
         let repoID: Repo.ID = "user/repo"
         let commitHash = "abc123def456789012345678901234567890abcd"
@@ -505,7 +505,7 @@ struct HubCacheTests {
         let content = "{ \"key\": \"value\" }"
         let data = Data(content.utf8)
 
-        try cache.storeData(
+        try await cache.storeData(
             data,
             repo: repoID,
             kind: .model,
@@ -533,12 +533,12 @@ struct HubCacheTests {
     }
 
     @Test("Store data updates ref when provided")
-    func storeDataUpdatesRef() throws {
+    func storeDataUpdatesRef() async throws {
         let cache = HubCache(cacheDirectory: tempDirectory)
         let repoID: Repo.ID = "user/repo"
         let commitHash = "abc123def456789012345678901234567890abcd"
 
-        try cache.storeData(
+        try await cache.storeData(
             Data("content".utf8),
             repo: repoID,
             kind: .model,
@@ -582,7 +582,7 @@ struct HubCacheTests {
     // MARK: - Path Traversal Validation Tests
 
     @Test("Store file rejects etag with path traversal")
-    func storeFileRejectsEtagPathTraversal() throws {
+    func storeFileRejectsEtagPathTraversal() async throws {
         let cache = HubCache(cacheDirectory: tempDirectory)
         let repoID: Repo.ID = "user/repo"
         let commitHash = "abc123def456789012345678901234567890abcd"
@@ -590,8 +590,8 @@ struct HubCacheTests {
         let sourceFile = tempDirectory.appendingPathComponent("source.txt")
         try "content".write(to: sourceFile, atomically: true, encoding: .utf8)
 
-        #expect(throws: HubCacheError.self) {
-            try cache.storeFile(
+        await #expect(throws: HubCacheError.self) {
+            try await cache.storeFile(
                 at: sourceFile,
                 repo: repoID,
                 kind: .model,
@@ -603,15 +603,15 @@ struct HubCacheTests {
     }
 
     @Test("Store file rejects revision with path traversal")
-    func storeFileRejectsRevisionPathTraversal() throws {
+    func storeFileRejectsRevisionPathTraversal() async throws {
         let cache = HubCache(cacheDirectory: tempDirectory)
         let repoID: Repo.ID = "user/repo"
 
         let sourceFile = tempDirectory.appendingPathComponent("source.txt")
         try "content".write(to: sourceFile, atomically: true, encoding: .utf8)
 
-        #expect(throws: HubCacheError.self) {
-            try cache.storeFile(
+        await #expect(throws: HubCacheError.self) {
+            try await cache.storeFile(
                 at: sourceFile,
                 repo: repoID,
                 kind: .model,
@@ -623,7 +623,7 @@ struct HubCacheTests {
     }
 
     @Test("Store file rejects etag with forward slash")
-    func storeFileRejectsEtagWithSlash() throws {
+    func storeFileRejectsEtagWithSlash() async throws {
         let cache = HubCache(cacheDirectory: tempDirectory)
         let repoID: Repo.ID = "user/repo"
         let commitHash = "abc123def456789012345678901234567890abcd"
@@ -631,8 +631,8 @@ struct HubCacheTests {
         let sourceFile = tempDirectory.appendingPathComponent("source.txt")
         try "content".write(to: sourceFile, atomically: true, encoding: .utf8)
 
-        #expect(throws: HubCacheError.self) {
-            try cache.storeFile(
+        await #expect(throws: HubCacheError.self) {
+            try await cache.storeFile(
                 at: sourceFile,
                 repo: repoID,
                 kind: .model,
@@ -644,7 +644,7 @@ struct HubCacheTests {
     }
 
     @Test("Store file rejects etag with backslash")
-    func storeFileRejectsEtagWithBackslash() throws {
+    func storeFileRejectsEtagWithBackslash() async throws {
         let cache = HubCache(cacheDirectory: tempDirectory)
         let repoID: Repo.ID = "user/repo"
         let commitHash = "abc123def456789012345678901234567890abcd"
@@ -652,8 +652,8 @@ struct HubCacheTests {
         let sourceFile = tempDirectory.appendingPathComponent("source.txt")
         try "content".write(to: sourceFile, atomically: true, encoding: .utf8)
 
-        #expect(throws: HubCacheError.self) {
-            try cache.storeFile(
+        await #expect(throws: HubCacheError.self) {
+            try await cache.storeFile(
                 at: sourceFile,
                 repo: repoID,
                 kind: .model,
@@ -665,7 +665,7 @@ struct HubCacheTests {
     }
 
     @Test("Store file rejects empty etag")
-    func storeFileRejectsEmptyEtag() throws {
+    func storeFileRejectsEmptyEtag() async throws {
         let cache = HubCache(cacheDirectory: tempDirectory)
         let repoID: Repo.ID = "user/repo"
         let commitHash = "abc123def456789012345678901234567890abcd"
@@ -673,8 +673,8 @@ struct HubCacheTests {
         let sourceFile = tempDirectory.appendingPathComponent("source.txt")
         try "content".write(to: sourceFile, atomically: true, encoding: .utf8)
 
-        #expect(throws: HubCacheError.self) {
-            try cache.storeFile(
+        await #expect(throws: HubCacheError.self) {
+            try await cache.storeFile(
                 at: sourceFile,
                 repo: repoID,
                 kind: .model,
@@ -686,7 +686,7 @@ struct HubCacheTests {
     }
 
     @Test("Store file rejects etag with null byte")
-    func storeFileRejectsEtagWithNullByte() throws {
+    func storeFileRejectsEtagWithNullByte() async throws {
         let cache = HubCache(cacheDirectory: tempDirectory)
         let repoID: Repo.ID = "user/repo"
         let commitHash = "abc123def456789012345678901234567890abcd"
@@ -694,8 +694,8 @@ struct HubCacheTests {
         let sourceFile = tempDirectory.appendingPathComponent("source.txt")
         try "content".write(to: sourceFile, atomically: true, encoding: .utf8)
 
-        #expect(throws: HubCacheError.self) {
-            try cache.storeFile(
+        await #expect(throws: HubCacheError.self) {
+            try await cache.storeFile(
                 at: sourceFile,
                 repo: repoID,
                 kind: .model,
@@ -707,13 +707,13 @@ struct HubCacheTests {
     }
 
     @Test("Store data rejects etag with path traversal")
-    func storeDataRejectsEtagPathTraversal() throws {
+    func storeDataRejectsEtagPathTraversal() async throws {
         let cache = HubCache(cacheDirectory: tempDirectory)
         let repoID: Repo.ID = "user/repo"
         let commitHash = "abc123def456789012345678901234567890abcd"
 
-        #expect(throws: HubCacheError.self) {
-            try cache.storeData(
+        await #expect(throws: HubCacheError.self) {
+            try await cache.storeData(
                 Data("content".utf8),
                 repo: repoID,
                 kind: .model,
@@ -725,12 +725,12 @@ struct HubCacheTests {
     }
 
     @Test("Store data rejects revision with path traversal")
-    func storeDataRejectsRevisionPathTraversal() throws {
+    func storeDataRejectsRevisionPathTraversal() async throws {
         let cache = HubCache(cacheDirectory: tempDirectory)
         let repoID: Repo.ID = "user/repo"
 
-        #expect(throws: HubCacheError.self) {
-            try cache.storeData(
+        await #expect(throws: HubCacheError.self) {
+            try await cache.storeData(
                 Data("content".utf8),
                 repo: repoID,
                 kind: .model,
@@ -742,7 +742,7 @@ struct HubCacheTests {
     }
 
     @Test("Store file accepts valid etag and revision")
-    func storeFileAcceptsValidComponents() throws {
+    func storeFileAcceptsValidComponents() async throws {
         let cache = HubCache(cacheDirectory: tempDirectory)
         let repoID: Repo.ID = "user/repo"
         let commitHash = "abc123def456789012345678901234567890abcd"
@@ -752,7 +752,7 @@ struct HubCacheTests {
         try "content".write(to: sourceFile, atomically: true, encoding: .utf8)
 
         // Should not throw
-        try cache.storeFile(
+        try await cache.storeFile(
             at: sourceFile,
             repo: repoID,
             kind: .model,
@@ -773,7 +773,7 @@ struct HubCacheTests {
     // MARK: - Filename Path Traversal Validation Tests
 
     @Test("Store file rejects filename with path traversal")
-    func storeFileRejectsFilenamePathTraversal() throws {
+    func storeFileRejectsFilenamePathTraversal() async throws {
         let cache = HubCache(cacheDirectory: tempDirectory)
         let repoID: Repo.ID = "user/repo"
         let commitHash = "abc123def456789012345678901234567890abcd"
@@ -781,8 +781,8 @@ struct HubCacheTests {
         let sourceFile = tempDirectory.appendingPathComponent("source.txt")
         try "content".write(to: sourceFile, atomically: true, encoding: .utf8)
 
-        #expect(throws: HubCacheError.self) {
-            try cache.storeFile(
+        await #expect(throws: HubCacheError.self) {
+            try await cache.storeFile(
                 at: sourceFile,
                 repo: repoID,
                 kind: .model,
@@ -794,7 +794,7 @@ struct HubCacheTests {
     }
 
     @Test("Store file rejects filename with embedded path traversal")
-    func storeFileRejectsFilenameEmbeddedTraversal() throws {
+    func storeFileRejectsFilenameEmbeddedTraversal() async throws {
         let cache = HubCache(cacheDirectory: tempDirectory)
         let repoID: Repo.ID = "user/repo"
         let commitHash = "abc123def456789012345678901234567890abcd"
@@ -802,8 +802,8 @@ struct HubCacheTests {
         let sourceFile = tempDirectory.appendingPathComponent("source.txt")
         try "content".write(to: sourceFile, atomically: true, encoding: .utf8)
 
-        #expect(throws: HubCacheError.self) {
-            try cache.storeFile(
+        await #expect(throws: HubCacheError.self) {
+            try await cache.storeFile(
                 at: sourceFile,
                 repo: repoID,
                 kind: .model,
@@ -815,7 +815,7 @@ struct HubCacheTests {
     }
 
     @Test("Store file rejects filename with absolute path")
-    func storeFileRejectsFilenameAbsolutePath() throws {
+    func storeFileRejectsFilenameAbsolutePath() async throws {
         let cache = HubCache(cacheDirectory: tempDirectory)
         let repoID: Repo.ID = "user/repo"
         let commitHash = "abc123def456789012345678901234567890abcd"
@@ -823,8 +823,8 @@ struct HubCacheTests {
         let sourceFile = tempDirectory.appendingPathComponent("source.txt")
         try "content".write(to: sourceFile, atomically: true, encoding: .utf8)
 
-        #expect(throws: HubCacheError.self) {
-            try cache.storeFile(
+        await #expect(throws: HubCacheError.self) {
+            try await cache.storeFile(
                 at: sourceFile,
                 repo: repoID,
                 kind: .model,
@@ -836,7 +836,7 @@ struct HubCacheTests {
     }
 
     @Test("Store file rejects filename with backslash")
-    func storeFileRejectsFilenameBackslash() throws {
+    func storeFileRejectsFilenameBackslash() async throws {
         let cache = HubCache(cacheDirectory: tempDirectory)
         let repoID: Repo.ID = "user/repo"
         let commitHash = "abc123def456789012345678901234567890abcd"
@@ -844,8 +844,8 @@ struct HubCacheTests {
         let sourceFile = tempDirectory.appendingPathComponent("source.txt")
         try "content".write(to: sourceFile, atomically: true, encoding: .utf8)
 
-        #expect(throws: HubCacheError.self) {
-            try cache.storeFile(
+        await #expect(throws: HubCacheError.self) {
+            try await cache.storeFile(
                 at: sourceFile,
                 repo: repoID,
                 kind: .model,
@@ -857,7 +857,7 @@ struct HubCacheTests {
     }
 
     @Test("Store file rejects empty filename")
-    func storeFileRejectsEmptyFilename() throws {
+    func storeFileRejectsEmptyFilename() async throws {
         let cache = HubCache(cacheDirectory: tempDirectory)
         let repoID: Repo.ID = "user/repo"
         let commitHash = "abc123def456789012345678901234567890abcd"
@@ -865,8 +865,8 @@ struct HubCacheTests {
         let sourceFile = tempDirectory.appendingPathComponent("source.txt")
         try "content".write(to: sourceFile, atomically: true, encoding: .utf8)
 
-        #expect(throws: HubCacheError.self) {
-            try cache.storeFile(
+        await #expect(throws: HubCacheError.self) {
+            try await cache.storeFile(
                 at: sourceFile,
                 repo: repoID,
                 kind: .model,
@@ -878,7 +878,7 @@ struct HubCacheTests {
     }
 
     @Test("Store file rejects filename with null byte")
-    func storeFileRejectsFilenameNullByte() throws {
+    func storeFileRejectsFilenameNullByte() async throws {
         let cache = HubCache(cacheDirectory: tempDirectory)
         let repoID: Repo.ID = "user/repo"
         let commitHash = "abc123def456789012345678901234567890abcd"
@@ -886,8 +886,8 @@ struct HubCacheTests {
         let sourceFile = tempDirectory.appendingPathComponent("source.txt")
         try "content".write(to: sourceFile, atomically: true, encoding: .utf8)
 
-        #expect(throws: HubCacheError.self) {
-            try cache.storeFile(
+        await #expect(throws: HubCacheError.self) {
+            try await cache.storeFile(
                 at: sourceFile,
                 repo: repoID,
                 kind: .model,
@@ -899,7 +899,7 @@ struct HubCacheTests {
     }
 
     @Test("Store file rejects filename with empty path component")
-    func storeFileRejectsFilenameEmptyComponent() throws {
+    func storeFileRejectsFilenameEmptyComponent() async throws {
         let cache = HubCache(cacheDirectory: tempDirectory)
         let repoID: Repo.ID = "user/repo"
         let commitHash = "abc123def456789012345678901234567890abcd"
@@ -907,8 +907,8 @@ struct HubCacheTests {
         let sourceFile = tempDirectory.appendingPathComponent("source.txt")
         try "content".write(to: sourceFile, atomically: true, encoding: .utf8)
 
-        #expect(throws: HubCacheError.self) {
-            try cache.storeFile(
+        await #expect(throws: HubCacheError.self) {
+            try await cache.storeFile(
                 at: sourceFile,
                 repo: repoID,
                 kind: .model,
@@ -920,13 +920,13 @@ struct HubCacheTests {
     }
 
     @Test("Store data rejects filename with path traversal")
-    func storeDataRejectsFilenamePathTraversal() throws {
+    func storeDataRejectsFilenamePathTraversal() async throws {
         let cache = HubCache(cacheDirectory: tempDirectory)
         let repoID: Repo.ID = "user/repo"
         let commitHash = "abc123def456789012345678901234567890abcd"
 
-        #expect(throws: HubCacheError.self) {
-            try cache.storeData(
+        await #expect(throws: HubCacheError.self) {
+            try await cache.storeData(
                 Data("content".utf8),
                 repo: repoID,
                 kind: .model,
@@ -938,7 +938,7 @@ struct HubCacheTests {
     }
 
     @Test("Store file accepts valid nested filename")
-    func storeFileAcceptsValidNestedFilename() throws {
+    func storeFileAcceptsValidNestedFilename() async throws {
         let cache = HubCache(cacheDirectory: tempDirectory)
         let repoID: Repo.ID = "user/repo"
         let commitHash = "abc123def456789012345678901234567890abcd"
@@ -947,7 +947,7 @@ struct HubCacheTests {
         let sourceFile = tempDirectory.appendingPathComponent("source.txt")
         try "content".write(to: sourceFile, atomically: true, encoding: .utf8)
 
-        try cache.storeFile(
+        try await cache.storeFile(
             at: sourceFile,
             repo: repoID,
             kind: .model,
@@ -966,7 +966,7 @@ struct HubCacheTests {
     }
 
     @Test("Store file accepts deeply nested filename")
-    func storeFileAcceptsDeeplyNestedFilename() throws {
+    func storeFileAcceptsDeeplyNestedFilename() async throws {
         let cache = HubCache(cacheDirectory: tempDirectory)
         let repoID: Repo.ID = "user/repo"
         let commitHash = "abc123def456789012345678901234567890abcd"
@@ -975,7 +975,7 @@ struct HubCacheTests {
         let sourceFile = tempDirectory.appendingPathComponent("source.txt")
         try "content".write(to: sourceFile, atomically: true, encoding: .utf8)
 
-        try cache.storeFile(
+        try await cache.storeFile(
             at: sourceFile,
             repo: repoID,
             kind: .model,
