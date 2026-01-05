@@ -27,7 +27,6 @@ public struct PaginatedSequence<T: Decodable & Sendable>: AsyncSequence, Sendabl
         firstPage: @escaping @Sendable () async throws -> PaginatedResponse<T>,
         nextPage: @escaping @Sendable (URL) async throws -> PaginatedResponse<T>
     ) {
-        // Match Python's islice behavior: negative values are invalid
         if let limit, limit < 0 {
             preconditionFailure("limit must be non-negative, got \(limit)")
         }
@@ -65,43 +64,39 @@ public struct PaginatedSequence<T: Decodable & Sendable>: AsyncSequence, Sendabl
         }
 
         public mutating func next() async throws -> T? {
-            // Check if we've hit the limit
-            if let limit, totalYielded >= limit {
-                return nil
+            // Handle empty pages
+            while true {
+                // Check if we've hit the limit
+                if let limit, totalYielded >= limit {
+                    return nil
+                }
+
+                // Return next item from current page if available
+                if currentIndex < currentItems.count {
+                    let item = currentItems[currentIndex]
+                    currentIndex += 1
+                    totalYielded += 1
+                    return item
+                }
+
+                // Fetch next page
+                let page: PaginatedResponse<T>
+                if !fetchedFirstPage {
+                    fetchedFirstPage = true
+                    page = try await firstPageFetcher()
+                } else if let url = nextURL {
+                    page = try await nextPageFetcher(url)
+                } else {
+                    return nil
+                }
+
+                currentItems = page.items
+                currentIndex = 0
+                nextURL = page.nextURL
+
+                // If page has items, loop will return first item on next iteration
+                // If page is empty, loop continues to fetch next page (or exit if no more pages)
             }
-
-            // Return next item from current page if available
-            if currentIndex < currentItems.count {
-                let item = currentItems[currentIndex]
-                currentIndex += 1
-                totalYielded += 1
-                return item
-            }
-
-            // Fetch next page
-            let page: PaginatedResponse<T>
-            if !fetchedFirstPage {
-                fetchedFirstPage = true
-                page = try await firstPageFetcher()
-            } else if let url = nextURL {
-                page = try await nextPageFetcher(url)
-            } else {
-                return nil
-            }
-
-            currentItems = page.items
-            currentIndex = 0
-            nextURL = page.nextURL
-
-            // Return first item from new page
-            guard currentIndex < currentItems.count else {
-                return nil
-            }
-
-            let item = currentItems[currentIndex]
-            currentIndex += 1
-            totalYielded += 1
-            return item
         }
     }
 }

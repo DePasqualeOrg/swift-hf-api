@@ -90,6 +90,38 @@ struct PaginationTests {
         #expect(results.isEmpty)
     }
 
+    @Test("PaginatedSequence skips empty pages and continues to next")
+    func paginatedSequenceSkipsEmptyPages() async throws {
+        let page2URL = URL(string: "https://example.com/page2")!
+        let page3URL = URL(string: "https://example.com/page3")!
+        let fetchCount = Counter()
+
+        let sequence = PaginatedSequence<Int>(
+            limit: nil,
+            firstPage: {
+                fetchCount.increment()
+                return PaginatedResponse(items: [1, 2], nextURL: page2URL)
+            },
+            nextPage: { url in
+                fetchCount.increment()
+                if url == page2URL {
+                    // Empty page with continuation
+                    return PaginatedResponse(items: [], nextURL: page3URL)
+                } else {
+                    return PaginatedResponse(items: [3, 4], nextURL: nil)
+                }
+            }
+        )
+
+        var results: [Int] = []
+        for try await item in sequence {
+            results.append(item)
+        }
+
+        #expect(results == [1, 2, 3, 4])
+        #expect(fetchCount.value == 3)  // All three pages fetched, including empty one
+    }
+
     @Test("PaginatedSequence is lazy - doesn't fetch until iterated")
     func paginatedSequenceLazyFetching() async throws {
         let fetchCount = Counter()
