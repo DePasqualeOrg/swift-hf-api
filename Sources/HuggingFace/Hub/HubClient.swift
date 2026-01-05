@@ -184,8 +184,6 @@ public final class HubClient: Sendable {
         )
         self.cache = cache
         self.useOfflineMode = useOfflineMode
-        // Start network monitoring for auto-detection
-        NetworkMonitor.shared.startMonitoring()
     }
 
     // MARK: - Auto-detection
