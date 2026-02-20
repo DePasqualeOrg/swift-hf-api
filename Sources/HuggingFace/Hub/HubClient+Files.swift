@@ -346,6 +346,8 @@ public extension HubClient {
         from repo: Repo.ID,
         kind: Repo.Kind = .model,
         revision: String = "main",
+        to destination: URL? = nil,
+        localFilesOnly: Bool = false,
         endpoint: FileDownloadEndpoint = .resolve,
         cachePolicy: URLRequest.CachePolicy = .useProtocolCachePolicy,
         progress: Progress? = nil,
@@ -363,8 +365,17 @@ public extension HubClient {
             if let progress {
                 progress.completedUnitCount = progress.totalUnitCount
             }
-            return cachedPath
+            return try copyToLocalDirectoryIfNeeded(
+                cachedPath, repoPath: repoPath, localDirectory: destination
+            )
         }
+
+        if localFilesOnly {
+            throw HubCacheError.offlineModeError(
+                "File '\(repoPath)' not available in cache"
+            )
+        }
+
         if endpoint == .resolve, transport.shouldAttemptXet {
             do {
                 if let downloaded = try await downloadFileWithXet(
@@ -375,7 +386,9 @@ public extension HubClient {
                     progress: progress,
                     transport: transport
                 ) {
-                    return downloaded
+                    return try copyToLocalDirectoryIfNeeded(
+                        downloaded, repoPath: repoPath, localDirectory: destination
+                    )
                 }
             } catch {
                 if transport == .xet {
@@ -400,7 +413,7 @@ public extension HubClient {
         request.cachePolicy = cachePolicy
 
         // Use shared cache coordination (blob check, locking) for both platforms
-        return try await downloadWithCacheCoordination(
+        let cachedPath = try await downloadWithCacheCoordination(
             request: request,
             metadata: metadata,
             repo: repo,
@@ -408,6 +421,9 @@ public extension HubClient {
             revision: revision,
             repoPath: repoPath,
             progress: progress
+        )
+        return try copyToLocalDirectoryIfNeeded(
+            cachedPath, repoPath: repoPath, localDirectory: destination
         )
     }
 
@@ -1028,6 +1044,7 @@ public extension HubClient {
         kind: Repo.Kind = .model,
         revision: String = "main",
         matching globs: [String] = [],
+        to destination: URL? = nil,
         localFilesOnly: Bool = false,
         maxConcurrent: Int = 8,
         progressHandler: (@Sendable (Progress) -> Void)? = nil
@@ -1039,13 +1056,19 @@ public extension HubClient {
         // When localFilesOnly is set or the device is offline, return cached
         // files without making any network requests.
         if localFilesOnly {
-            return try downloadSnapshotOffline(
+            let snapshotPath = try downloadSnapshotOffline(
                 cache: cache, repo: repo, kind: kind, revision: revision
+            )
+            return try copySnapshotToLocalDirectoryIfNeeded(
+                from: snapshotPath, localDirectory: destination
             )
         }
         if await shouldUseOfflineMode() {
-            return try downloadSnapshotOffline(
+            let snapshotPath = try downloadSnapshotOffline(
                 cache: cache, repo: repo, kind: kind, revision: revision
+            )
+            return try copySnapshotToLocalDirectoryIfNeeded(
+                from: snapshotPath, localDirectory: destination
             )
         }
 
@@ -1057,7 +1080,9 @@ public extension HubClient {
             let totalProgress = Progress(totalUnitCount: 1)
             totalProgress.completedUnitCount = 1
             progressHandler?(totalProgress)
-            return snapshotPath
+            return try copySnapshotToLocalDirectoryIfNeeded(
+                from: snapshotPath, localDirectory: destination
+            )
         }
 
         // Fetch repo info from the server. If the network call fails, fall back to the
@@ -1069,7 +1094,9 @@ public extension HubClient {
             if let cached = try? downloadSnapshotOffline(
                 cache: cache, repo: repo, kind: kind, revision: revision
             ) {
-                return cached
+                return try copySnapshotToLocalDirectoryIfNeeded(
+                    from: cached, localDirectory: destination
+                )
             }
             throw error
         }
@@ -1160,7 +1187,9 @@ public extension HubClient {
         }
 
         progressHandler?(totalProgress)
-        return snapshotPath
+        return try copySnapshotToLocalDirectoryIfNeeded(
+            from: snapshotPath, localDirectory: destination
+        )
     }
 
     /// Download a repository snapshot with aggregate speed reporting.
@@ -1170,6 +1199,7 @@ public extension HubClient {
         kind: Repo.Kind = .model,
         revision: String = "main",
         matching globs: [String] = [],
+        to destination: URL? = nil,
         localFilesOnly: Bool = false,
         maxConcurrent: Int = 8,
         progressHandler: @Sendable @escaping (Progress, Double?) -> Void
@@ -1179,6 +1209,7 @@ public extension HubClient {
             kind: kind,
             revision: revision,
             matching: globs,
+            to: destination,
             localFilesOnly: localFilesOnly,
             maxConcurrent: maxConcurrent
         ) { progress in
@@ -1207,6 +1238,54 @@ public extension HubClient {
         }
 
         return snapshotPath
+    }
+
+    /// If `localDirectory` is set, copies a single cached file there and returns the
+    /// local path. Otherwise returns the cached path unchanged.
+    private func copyToLocalDirectoryIfNeeded(
+        _ cachedPath: URL, repoPath: String, localDirectory: URL?
+    ) throws -> URL {
+        guard let localDirectory else { return cachedPath }
+        let localPath = localDirectory.appendingPathComponent(repoPath)
+        let fileManager = FileManager.default
+        try fileManager.createDirectory(
+            at: localPath.deletingLastPathComponent(), withIntermediateDirectories: true
+        )
+        try? fileManager.removeItem(at: localPath)
+        try fileManager.copyItem(at: cachedPath, to: localPath)
+        return localPath
+    }
+
+    /// If `localDirectory` is set, copies all files from a snapshot directory there
+    /// and returns the local directory. Otherwise returns the snapshot path unchanged.
+    private func copySnapshotToLocalDirectoryIfNeeded(
+        from snapshotPath: URL, localDirectory: URL?
+    ) throws -> URL {
+        guard let localDirectory else { return snapshotPath }
+        let fileManager = FileManager.default
+        try fileManager.createDirectory(at: localDirectory, withIntermediateDirectories: true)
+
+        guard let enumerator = fileManager.enumerator(
+            at: snapshotPath,
+            includingPropertiesForKeys: [.isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            return localDirectory
+        }
+
+        for case let fileURL as URL in enumerator {
+            let snapshotComponents = snapshotPath.standardized.pathComponents
+            let fileComponents = fileURL.standardized.pathComponents
+            let relativeComponents = fileComponents.dropFirst(snapshotComponents.count)
+            let destURL = relativeComponents.reduce(localDirectory) { $0.appendingPathComponent($1) }
+            try fileManager.createDirectory(
+                at: destURL.deletingLastPathComponent(), withIntermediateDirectories: true
+            )
+            try? fileManager.removeItem(at: destURL)
+            try fileManager.copyItem(at: fileURL, to: destURL)
+        }
+
+        return localDirectory
     }
 }
 
