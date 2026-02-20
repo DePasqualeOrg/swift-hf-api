@@ -178,7 +178,7 @@ public final class HubClient: Sendable {
             session: session
         )
         self.metadataSession = URLSession(
-            configuration: .default,
+            configuration: session.configuration,
             delegate: SameHostRedirectDelegate.shared,
             delegateQueue: nil
         )
