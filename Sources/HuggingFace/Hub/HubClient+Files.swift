@@ -1028,6 +1028,7 @@ public extension HubClient {
         kind: Repo.Kind = .model,
         revision: String = "main",
         matching globs: [String] = [],
+        localFilesOnly: Bool = false,
         maxConcurrent: Int = 8,
         progressHandler: (@Sendable (Progress) -> Void)? = nil
     ) async throws -> URL {
@@ -1035,7 +1036,13 @@ public extension HubClient {
             throw HubCacheError.cacheNotConfigured
         }
 
-        // Handle offline mode
+        // When localFilesOnly is set or the device is offline, return cached
+        // files without making any network requests.
+        if localFilesOnly {
+            return try downloadSnapshotOffline(
+                cache: cache, repo: repo, kind: kind, revision: revision
+            )
+        }
         if await shouldUseOfflineMode() {
             return try downloadSnapshotOffline(
                 cache: cache, repo: repo, kind: kind, revision: revision
@@ -1163,6 +1170,7 @@ public extension HubClient {
         kind: Repo.Kind = .model,
         revision: String = "main",
         matching globs: [String] = [],
+        localFilesOnly: Bool = false,
         maxConcurrent: Int = 8,
         progressHandler: @Sendable @escaping (Progress, Double?) -> Void
     ) async throws -> URL {
@@ -1171,6 +1179,7 @@ public extension HubClient {
             kind: kind,
             revision: revision,
             matching: globs,
+            localFilesOnly: localFilesOnly,
             maxConcurrent: maxConcurrent
         ) { progress in
             let speed = progress.userInfo[.throughputKey] as? Double
