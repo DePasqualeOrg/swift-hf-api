@@ -447,7 +447,7 @@ public extension HubClient {
         // Etag is required for blob-based cache storage
         // Note: metadata.etag is already normalized by fetchFileMetadata
         guard let normalizedEtag = metadata?.etag else {
-            throw HubCacheError.cacheNotConfigured
+            throw HubCacheError.unexpectedAPIResponse("Server did not return an ETag header for '\(repoPath)'")
         }
         let blobsDir = cache.blobsDirectory(repo: repo, kind: kind)
         let blobPath = blobsDir.appendingPathComponent(normalizedEtag)
@@ -1055,7 +1055,7 @@ public extension HubClient {
         let commitHash = repoInfo.commitHash
 
         guard let siblings = repoInfo.siblings else {
-            throw HubCacheError.offlineModeError("Could not get file list for repository")
+            throw HubCacheError.unexpectedAPIResponse("Could not get file list for repository '\(repo)'")
         }
 
         let entries = siblings.filter { entry in
@@ -1310,7 +1310,7 @@ private extension HubClient {
         }
 
         guard let normalizedEtag = xetInfo.etag else {
-            throw HubCacheError.cacheNotConfigured
+            throw HubCacheError.unexpectedAPIResponse("Server did not return an ETag header for '\(repoPath)'")
         }
 
         let fileManager = FileManager.default
@@ -1756,7 +1756,7 @@ extension HubClient {
         case .model:
             let model = try await getModel(repo, revision: revision, filesMetadata: true)
             guard let sha = model.sha else {
-                throw HubCacheError.offlineModeError("Could not resolve revision '\(revision)' to commit hash")
+                throw HubCacheError.unexpectedAPIResponse("Could not resolve revision '\(revision)' to commit hash")
             }
             let siblings = model.siblings?.map {
                 Git.TreeEntry(path: $0.relativeFilename, type: .file, oid: nil, size: $0.size, lastCommit: nil)
@@ -1765,7 +1765,7 @@ extension HubClient {
         case .dataset:
             let dataset = try await getDataset(repo, revision: revision, filesMetadata: true)
             guard let sha = dataset.sha else {
-                throw HubCacheError.offlineModeError("Could not resolve revision '\(revision)' to commit hash")
+                throw HubCacheError.unexpectedAPIResponse("Could not resolve revision '\(revision)' to commit hash")
             }
             let siblings = dataset.siblings?.map {
                 Git.TreeEntry(path: $0.relativeFilename, type: .file, oid: nil, size: $0.size, lastCommit: nil)
@@ -1774,7 +1774,7 @@ extension HubClient {
         case .space:
             let space = try await getSpace(repo, revision: revision, filesMetadata: true)
             guard let sha = space.sha else {
-                throw HubCacheError.offlineModeError("Could not resolve revision '\(revision)' to commit hash")
+                throw HubCacheError.unexpectedAPIResponse("Could not resolve revision '\(revision)' to commit hash")
             }
             let siblings = space.siblings?.map {
                 Git.TreeEntry(path: $0.relativeFilename, type: .file, oid: nil, size: $0.size, lastCommit: nil)

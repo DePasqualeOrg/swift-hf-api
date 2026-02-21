@@ -682,6 +682,9 @@ public enum HubCacheError: Error, LocalizedError {
     /// A cache is required for this operation but none is configured.
     case cacheNotConfigured
 
+    /// The API returned an unexpected or incomplete response.
+    case unexpectedAPIResponse(String)
+
     public var errorDescription: String? {
         switch self {
         case .invalidPathComponent(let component):
@@ -693,6 +696,8 @@ public enum HubCacheError: Error, LocalizedError {
             return "Offline mode: \(message)"
         case .cacheNotConfigured:
             return "A cache is required for this operation but none is configured"
+        case .unexpectedAPIResponse(let message):
+            return message
         }
     }
 }
