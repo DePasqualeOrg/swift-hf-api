@@ -255,14 +255,12 @@ public extension HubClient {
         cachePolicy: URLRequest.CachePolicy = .useProtocolCachePolicy
     ) async throws -> Data {
         // Check cache first
-        if let cache = cache,
-            let cachedPath = cache.cachedFilePath(
-                repo: repo,
-                kind: kind,
-                revision: revision,
-                filename: repoPath
-            )
-        {
+        if let cachedPath = cache.cachedFilePath(
+            repo: repo,
+            kind: kind,
+            revision: revision,
+            filename: repoPath
+        ) {
             return try Data(contentsOf: cachedPath)
         }
 
@@ -307,7 +305,7 @@ public extension HubClient {
         let commitHash =
             metadata.commitHash ?? (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "X-Repo-Commit")
 
-        if let cache = cache, let etag = etag, let commitHash = commitHash {
+        if let etag, let commitHash {
             try? await cache.storeData(
                 data,
                 repo: repo,
@@ -354,14 +352,12 @@ public extension HubClient {
         transport: FileDownloadTransport = .automatic
     ) async throws -> URL {
         // Check cache first
-        if let cache,
-            let cachedPath = cache.cachedFilePath(
-                repo: repo,
-                kind: kind,
-                revision: revision,
-                filename: repoPath
-            )
-        {
+        if let cachedPath = cache.cachedFilePath(
+            repo: repo,
+            kind: kind,
+            revision: revision,
+            filename: repoPath
+        ) {
             if let progress {
                 progress.completedUnitCount = progress.totalUnitCount
             }
@@ -448,9 +444,9 @@ public extension HubClient {
     ) async throws -> URL {
         let fileManager = FileManager.default
 
-        // Cache and etag are required for cache coordination
+        // Etag is required for blob-based cache storage
         // Note: metadata.etag is already normalized by fetchFileMetadata
-        guard let normalizedEtag = metadata?.etag, let cache else {
+        guard let normalizedEtag = metadata?.etag else {
             throw HubCacheError.cacheNotConfigured
         }
         let blobsDir = cache.blobsDirectory(repo: repo, kind: kind)
@@ -1027,8 +1023,6 @@ public extension HubClient {
         revision: String,
         matching globs: [String] = []
     ) -> URL? {
-        guard let cache else { return nil }
-
         let commit: String
         if isCommitHash(revision) {
             commit = revision
@@ -1087,10 +1081,6 @@ public extension HubClient {
         maxConcurrent: Int = 8,
         progressHandler: (@Sendable (Progress) -> Void)? = nil
     ) async throws -> URL {
-        guard let cache else {
-            throw HubCacheError.cacheNotConfigured
-        }
-
         // When localFilesOnly is set or the device is offline, return cached
         // files without making any network requests.
         if localFilesOnly {
@@ -1402,7 +1392,7 @@ private extension HubClient {
             return nil
         }
 
-        guard let cache, let normalizedEtag = xetInfo.etag else {
+        guard let normalizedEtag = xetInfo.etag else {
             throw HubCacheError.cacheNotConfigured
         }
 
