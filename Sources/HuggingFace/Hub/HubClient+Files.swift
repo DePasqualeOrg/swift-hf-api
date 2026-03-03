@@ -1,4 +1,5 @@
 // Copyright © Hugging Face SAS
+// Copyright © Anthony DePasquale
 
 import Crypto
 import FileLock
@@ -360,7 +361,9 @@ public extension HubClient {
                 progress.completedUnitCount = progress.totalUnitCount
             }
             return try copyToLocalDirectoryIfNeeded(
-                cachedPath, repoPath: repoPath, localDirectory: destination
+                cachedPath,
+                repoPath: repoPath,
+                localDirectory: destination
             )
         }
 
@@ -381,7 +384,9 @@ public extension HubClient {
                     transport: transport
                 ) {
                     return try copyToLocalDirectoryIfNeeded(
-                        downloaded, repoPath: repoPath, localDirectory: destination
+                        downloaded,
+                        repoPath: repoPath,
+                        localDirectory: destination
                     )
                 }
             } catch {
@@ -417,7 +422,9 @@ public extension HubClient {
             progress: progress
         )
         return try copyToLocalDirectoryIfNeeded(
-            cachedPath, repoPath: repoPath, localDirectory: destination
+            cachedPath,
+            repoPath: repoPath,
+            localDirectory: destination
         )
     }
 
@@ -547,7 +554,6 @@ public extension HubClient {
             .appendingPathComponent(commitHash)
             .appendingPathComponent(repoPath)
     }
-
 
     /// Download a file to the cache using a tree entry (uses file size for transport selection).
     ///
@@ -708,7 +714,7 @@ public extension HubClient {
 
             try destHandle.seekToEnd()
 
-            let chunkSize = 1_048_576 // 1 MB
+            let chunkSize = 1_048_576  // 1 MB
             while let chunk = try sourceHandle.read(upToCount: chunkSize), !chunk.isEmpty {
                 try destHandle.write(contentsOf: chunk)
             }
@@ -950,7 +956,11 @@ public extension HubClient {
         }
 
         return verifiedSnapshotPath(
-            cache: cache, repo: repo, kind: kind, commit: commit, matching: globs
+            cache: cache,
+            repo: repo,
+            kind: kind,
+            commit: commit,
+            matching: globs
         )
     }
 }
@@ -1002,18 +1012,26 @@ public extension HubClient {
         // files without making any network requests.
         if localFilesOnly {
             let snapshotPath = try downloadSnapshotOffline(
-                cache: cache, repo: repo, kind: kind, revision: revision
+                cache: cache,
+                repo: repo,
+                kind: kind,
+                revision: revision
             )
             return try copySnapshotToLocalDirectoryIfNeeded(
-                from: snapshotPath, localDirectory: destination
+                from: snapshotPath,
+                localDirectory: destination
             )
         }
         if await shouldUseOfflineMode() {
             let snapshotPath = try downloadSnapshotOffline(
-                cache: cache, repo: repo, kind: kind, revision: revision
+                cache: cache,
+                repo: repo,
+                kind: kind,
+                revision: revision
             )
             return try copySnapshotToLocalDirectoryIfNeeded(
-                from: snapshotPath, localDirectory: destination
+                from: snapshotPath,
+                localDirectory: destination
             )
         }
 
@@ -1027,13 +1045,19 @@ public extension HubClient {
         // verifying each file's presence in the snapshot on subsequent calls.
         if isCommitHash(revision),
             let snapshotPath = verifiedSnapshotPath(
-                cache: cache, repo: repo, kind: kind, commit: revision, matching: globs)
+                cache: cache,
+                repo: repo,
+                kind: kind,
+                commit: revision,
+                matching: globs
+            )
         {
             let totalProgress = Progress(totalUnitCount: 1)
             totalProgress.completedUnitCount = 1
             progressHandler?(totalProgress)
             return try copySnapshotToLocalDirectoryIfNeeded(
-                from: snapshotPath, localDirectory: destination
+                from: snapshotPath,
+                localDirectory: destination
             )
         }
 
@@ -1044,10 +1068,14 @@ public extension HubClient {
             repoInfo = try await getRepoInfo(for: repo, kind: kind, revision: revision)
         } catch {
             if let cached = try? downloadSnapshotOffline(
-                cache: cache, repo: repo, kind: kind, revision: revision
+                cache: cache,
+                repo: repo,
+                kind: kind,
+                revision: revision
             ) {
                 return try copySnapshotToLocalDirectoryIfNeeded(
-                    from: cached, localDirectory: destination
+                    from: cached,
+                    localDirectory: destination
                 )
             }
             throw error
@@ -1070,7 +1098,11 @@ public extension HubClient {
 
         // Cache repo info for future fast path lookups
         saveCachedRepoInfo(
-            repoInfo, cache: cache, repo: repo, kind: kind, commit: commitHash
+            repoInfo,
+            cache: cache,
+            repo: repo,
+            kind: kind,
+            commit: commitHash
         )
 
         // Size-weighted progress: total is sum of file sizes (bytes)
@@ -1145,7 +1177,8 @@ public extension HubClient {
 
         progressHandler?(totalProgress)
         return try copySnapshotToLocalDirectoryIfNeeded(
-            from: snapshotPath, localDirectory: destination
+            from: snapshotPath,
+            localDirectory: destination
         )
     }
 
@@ -1195,13 +1228,16 @@ public extension HubClient {
     /// If `localDirectory` is set, copies a single cached file there and returns the
     /// local path. Otherwise returns the cached path unchanged.
     private func copyToLocalDirectoryIfNeeded(
-        _ cachedPath: URL, repoPath: String, localDirectory: URL?
+        _ cachedPath: URL,
+        repoPath: String,
+        localDirectory: URL?
     ) throws -> URL {
         guard let localDirectory else { return cachedPath }
         let localPath = localDirectory.appendingPathComponent(repoPath)
         let fileManager = FileManager.default
         try fileManager.createDirectory(
-            at: localPath.deletingLastPathComponent(), withIntermediateDirectories: true
+            at: localPath.deletingLastPathComponent(),
+            withIntermediateDirectories: true
         )
         try? fileManager.removeItem(at: localPath)
         // Resolve symlinks because snapshot entries are relative symlinks to blobs
@@ -1214,17 +1250,20 @@ public extension HubClient {
     /// If `localDirectory` is set, copies all files from a snapshot directory there
     /// and returns the local directory. Otherwise returns the snapshot path unchanged.
     private func copySnapshotToLocalDirectoryIfNeeded(
-        from snapshotPath: URL, localDirectory: URL?
+        from snapshotPath: URL,
+        localDirectory: URL?
     ) throws -> URL {
         guard let localDirectory else { return snapshotPath }
         let fileManager = FileManager.default
         try fileManager.createDirectory(at: localDirectory, withIntermediateDirectories: true)
 
-        guard let enumerator = fileManager.enumerator(
-            at: snapshotPath,
-            includingPropertiesForKeys: [.isRegularFileKey],
-            options: []
-        ) else {
+        guard
+            let enumerator = fileManager.enumerator(
+                at: snapshotPath,
+                includingPropertiesForKeys: [.isRegularFileKey],
+                options: []
+            )
+        else {
             return localDirectory
         }
 
@@ -1234,7 +1273,8 @@ public extension HubClient {
             let relativeComponents = fileComponents.dropFirst(snapshotComponents.count)
             let destURL = relativeComponents.reduce(localDirectory) { $0.appendingPathComponent($1) }
             try fileManager.createDirectory(
-                at: destURL.deletingLastPathComponent(), withIntermediateDirectories: true
+                at: destURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true
             )
             try? fileManager.removeItem(at: destURL)
             // See comment in copyToLocalDirectoryIfNeeded above
@@ -1723,9 +1763,14 @@ private func verifiedSnapshotPath(
     let snapshotDir = cache.snapshotsDirectory(repo: repo, kind: kind)
         .appendingPathComponent(commit)
 
-    guard let cachedInfo = loadCachedRepoInfo(
-        cache: cache, repo: repo, kind: kind, commit: commit
-    ), let siblings = cachedInfo.siblings else { return nil }
+    guard
+        let cachedInfo = loadCachedRepoInfo(
+            cache: cache,
+            repo: repo,
+            kind: kind,
+            commit: commit
+        ), let siblings = cachedInfo.siblings
+    else { return nil }
 
     let entries = siblings.filter { entry in
         guard !globs.isEmpty else { return true }

@@ -1,4 +1,5 @@
 // Copyright © Hugging Face SAS
+// Copyright © Anthony DePasquale
 
 import Foundation
 
@@ -369,14 +370,15 @@ import Testing
                         return (response, Data(modelInfoResponse.utf8))
                     }
                     if path.hasSuffix("/large.bin") {
-                        let headers: [String: String] = if request.httpMethod == "HEAD" {
-                            [
-                                "ETag": "\"\(fileEtag)\"",
-                                "X-Repo-Commit": commitHash,
-                            ]
-                        } else {
-                            ["Content-Type": "application/octet-stream"]
-                        }
+                        let headers: [String: String] =
+                            if request.httpMethod == "HEAD" {
+                                [
+                                    "ETag": "\"\(fileEtag)\"",
+                                    "X-Repo-Commit": commitHash,
+                                ]
+                            } else {
+                                ["Content-Type": "application/octet-stream"]
+                            }
                         let response = HTTPURLResponse(
                             url: request.url!,
                             statusCode: 200,
@@ -449,14 +451,15 @@ import Testing
                         return (response, Data(modelInfoResponse.utf8))
                     }
                     if path.hasSuffix("/large.bin") {
-                        let headers: [String: String] = if request.httpMethod == "HEAD" {
-                            [
-                                "ETag": "\"\(fileEtag)\"",
-                                "X-Repo-Commit": commitHash,
-                            ]
-                        } else {
-                            ["Content-Type": "application/octet-stream"]
-                        }
+                        let headers: [String: String] =
+                            if request.httpMethod == "HEAD" {
+                                [
+                                    "ETag": "\"\(fileEtag)\"",
+                                    "X-Repo-Commit": commitHash,
+                                ]
+                            } else {
+                                ["Content-Type": "application/octet-stream"]
+                            }
                         let response = HTTPURLResponse(
                             url: request.url!,
                             statusCode: 200,

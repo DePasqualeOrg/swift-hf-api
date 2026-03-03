@@ -1,4 +1,5 @@
 // Copyright © Hugging Face SAS
+// Copyright © Anthony DePasquale
 
 import FileLock
 import Foundation

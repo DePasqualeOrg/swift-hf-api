@@ -1,4 +1,5 @@
 // Copyright © Hugging Face SAS
+// Copyright © Anthony DePasquale
 
 import Foundation
 
@@ -598,7 +599,8 @@ struct HubCacheTests {
         let snapshotsDir = cache.snapshotsDirectory(repo: repoID, kind: .model)
         let escapedPath = snapshotsDir.appendingPathComponent("../../../escape")
         try FileManager.default.createDirectory(
-            at: escapedPath.standardizedFileURL, withIntermediateDirectories: true
+            at: escapedPath.standardizedFileURL,
+            withIntermediateDirectories: true
         )
 
         let result = cache.snapshotPath(repo: repoID, kind: .model, revision: "../../../escape")
@@ -619,7 +621,9 @@ struct HubCacheTests {
             withIntermediateDirectories: true
         )
         try "fake-commit-hash".write(
-            to: escapedPath.standardizedFileURL, atomically: true, encoding: .utf8
+            to: escapedPath.standardizedFileURL,
+            atomically: true,
+            encoding: .utf8
         )
 
         let result = cache.resolveRevision(repo: repoID, kind: .model, ref: "../../escape")
@@ -633,7 +637,10 @@ struct HubCacheTests {
 
         #expect(throws: HubCacheError.self) {
             try cache.updateRef(
-                repo: repoID, kind: .model, ref: "../../escape", commit: "abc123"
+                repo: repoID,
+                kind: .model,
+                ref: "../../escape",
+                commit: "abc123"
             )
         }
     }

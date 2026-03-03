@@ -1,4 +1,5 @@
 // Copyright © Hugging Face SAS
+// Copyright © Anthony DePasquale
 
 import FileLock
 import Foundation
@@ -186,7 +187,7 @@ public struct HubCache: Sendable {
         // First try direct commit hash
         let directPath = snapshotsDir.appendingPathComponent(revision)
         if isContained(directPath, within: snapshotsDir),
-           FileManager.default.fileExists(atPath: directPath.path)
+            FileManager.default.fileExists(atPath: directPath.path)
         {
             return directPath
         }
@@ -195,7 +196,7 @@ public struct HubCache: Sendable {
         if let resolvedCommit = resolveRevision(repo: repo, kind: kind, ref: revision) {
             let resolvedPath = snapshotsDir.appendingPathComponent(resolvedCommit)
             if isContained(resolvedPath, within: snapshotsDir),
-               FileManager.default.fileExists(atPath: resolvedPath.path)
+                FileManager.default.fileExists(atPath: resolvedPath.path)
             {
                 return resolvedPath
             }
@@ -219,7 +220,7 @@ public struct HubCache: Sendable {
         let refsDir = refsDirectory(repo: repo, kind: kind)
         let refFile = refsDir.appendingPathComponent(ref)
         guard isContained(refFile, within: refsDir),
-              let contents = try? String(contentsOf: refFile, encoding: .utf8)
+            let contents = try? String(contentsOf: refFile, encoding: .utf8)
         else {
             return nil
         }

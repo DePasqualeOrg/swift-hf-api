@@ -1,3 +1,5 @@
+// Copyright © Anthony DePasquale
+
 import Foundation
 
 #if canImport(FoundationNetworking)
@@ -328,9 +330,11 @@ private func makeProgressStream() -> (
                 revision: commitHash,
                 matching: ["config.json"]
             )
-            #expect(FileManager.default.fileExists(
-                atPath: firstSnapshot.appendingPathComponent("config.json").path
-            ))
+            #expect(
+                FileManager.default.fileExists(
+                    atPath: firstSnapshot.appendingPathComponent("config.json").path
+                )
+            )
 
             // Now download with a different glob — the snapshot directory exists
             // but the requested file isn't there. The fast path should detect this
@@ -340,9 +344,11 @@ private func makeProgressStream() -> (
                 revision: commitHash,
                 matching: ["tokenizer.json"]
             )
-            #expect(FileManager.default.fileExists(
-                atPath: secondSnapshot.appendingPathComponent("tokenizer.json").path
-            ))
+            #expect(
+                FileManager.default.fileExists(
+                    atPath: secondSnapshot.appendingPathComponent("tokenizer.json").path
+                )
+            )
         }
 
         @Test("cachedSnapshotPath returns nil for incomplete snapshots")
@@ -362,13 +368,17 @@ private func makeProgressStream() -> (
 
             // cachedSnapshotPath with the same glob should return the path
             let samePath = client.cachedSnapshotPath(
-                repo: repoID, revision: commitHash, matching: ["config.json"]
+                repo: repoID,
+                revision: commitHash,
+                matching: ["config.json"]
             )
             #expect(samePath != nil)
 
             // cachedSnapshotPath with a different glob should return nil
             let differentPath = client.cachedSnapshotPath(
-                repo: repoID, revision: commitHash, matching: ["tokenizer.json"]
+                repo: repoID,
+                revision: commitHash,
+                matching: ["tokenizer.json"]
             )
             #expect(differentPath == nil)
 
@@ -380,7 +390,9 @@ private func makeProgressStream() -> (
                 matching: ["tokenizer.json"]
             )
             let bothPath = client.cachedSnapshotPath(
-                repo: repoID, revision: commitHash, matching: ["config.json", "tokenizer.json"]
+                repo: repoID,
+                revision: commitHash,
+                matching: ["config.json", "tokenizer.json"]
             )
             #expect(bothPath != nil)
         }

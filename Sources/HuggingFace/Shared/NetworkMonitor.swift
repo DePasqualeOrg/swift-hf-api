@@ -1,3 +1,5 @@
+// Copyright © Anthony DePasquale
+
 import Foundation
 
 #if canImport(Network)
