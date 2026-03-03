@@ -1,4 +1,5 @@
 // Copyright © Hugging Face SAS
+// Copyright © Anthony DePasquale
 
 import Foundation
 
@@ -38,7 +39,6 @@ extension Tags: Codable {
         try container.encode(storage)
     }
 }
-
 
 // MARK: - Collection
 
