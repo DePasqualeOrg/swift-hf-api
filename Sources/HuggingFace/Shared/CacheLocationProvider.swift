@@ -1,4 +1,5 @@
 // Copyright © Hugging Face SAS
+// Copyright © Anthony DePasquale
 
 import Foundation
 
@@ -29,14 +30,6 @@ import Foundation
 ///
 /// ```swift
 /// let cache = HubCache(location: .fixed(directory: URL(fileURLWithPath: "/custom/cache")))
-/// ```
-///
-/// ## Disable Caching
-///
-/// To disable file caching entirely:
-///
-/// ```swift
-/// let client = HubClient(cache: nil)
 /// ```
 ///
 /// ## Custom Location Provider
