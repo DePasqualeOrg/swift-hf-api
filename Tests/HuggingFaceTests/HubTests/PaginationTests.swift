@@ -552,6 +552,7 @@ struct PaginationTests {
 
         @Test(
             "First page does not retry on server errors",
+            .mockURLSession,
             arguments: [429, 500, 502, 503, 504]
         )
         func firstPageNoRetry(statusCode: Int) async throws {
@@ -582,6 +583,7 @@ struct PaginationTests {
 
         @Test(
             "Subsequent page retries on server errors and succeeds",
+            .mockURLSession,
             arguments: [429, 500, 502, 503, 504]
         )
         func retryOnServerError(statusCode: Int) async throws {
@@ -635,6 +637,7 @@ struct PaginationTests {
 
         @Test(
             "Does not retry on client errors",
+            .mockURLSession,
             arguments: [400, 401, 403, 404, 422]
         )
         func noRetryOnClientError(statusCode: Int) async throws {
