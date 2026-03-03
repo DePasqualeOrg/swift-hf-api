@@ -1104,15 +1104,6 @@ public extension HubClient {
         let snapshotPath = cache.snapshotsDirectory(repo: repo, kind: kind)
             .appendingPathComponent(commitHash)
 
-        // Cache repo info for future fast path lookups
-        saveCachedRepoInfo(
-            repoInfo,
-            cache: cache,
-            repo: repo,
-            kind: kind,
-            commit: commitHash
-        )
-
         // Size-weighted progress: total is sum of file sizes (bytes)
         let totalBytes = entries.reduce(Int64(0)) { $0 + Int64($1.size ?? 1) }
         let totalProgress = Progress(totalUnitCount: totalBytes)
@@ -1170,6 +1161,16 @@ public extension HubClient {
                 progressHandler?(totalProgress)
             }
         }
+
+        // Save repo info after downloads so resolveCachedSnapshot can verify
+        // completeness on future calls without a network round-trip
+        saveCachedRepoInfo(
+            repoInfo,
+            cache: cache,
+            repo: repo,
+            kind: kind,
+            commit: commitHash
+        )
 
         // Update ref mapping if we resolved a branch/tag to commit hash
         if revision != commitHash {
