@@ -1,5 +1,5 @@
 {
-  "originHash" : "46ebeafa9b1e62184119d5ae262d4d576011734b6ad9bbe9410e951ec90675db",
+  "originHash" : "9b82562964c6d9ebb574375291b547e075b15676f18dcb4ca31c080b2f1aab26",
   "pins" : [
     {
       "identity" : "async-http-client",
@@ -94,10 +94,10 @@
     {
       "identity" : "swift-filelock",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/DePasqualeOrg/swift-filelock.git",
+      "location" : "https://github.com/DePasqualeOrg/swift-filelock",
       "state" : {
-        "revision" : "36da4b004a91e915170fae065e7d46a7a8bf0e3d",
-        "version" : "0.1.0"
+        "revision" : "3894dbeea7593724b847f7cff32a3e2b162b70a0",
+        "version" : "0.1.1"
       }
     },
     {
