@@ -4,7 +4,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "swift-huggingface",
+    name: "swift-hf-api",
     platforms: [
         .macOS(.v13),
         .macCatalyst(.v16),
