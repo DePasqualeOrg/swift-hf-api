@@ -76,35 +76,39 @@ private func makeProgressStream() -> (
             #expect(FileManager.default.fileExists(atPath: configPath.path))
         }
 
-        @Test("Download snapshot tracks progress")
-        func downloadSnapshotTracksProgress() async throws {
-            let repoID: Repo.ID = "google-t5/t5-base"
-            // Use a separate directory to ensure fresh download (not cached)
-            let cacheDir = Self.cacheDirectory.appending(path: "progress-cache")
-            try? FileManager.default.removeItem(at: cacheDir)
+        // Progress parent-child accounting differs on Linux's Foundation implementation,
+        // so progress fraction tests are only reliable on Apple platforms.
+        #if !canImport(FoundationNetworking)
+            @Test("Download snapshot tracks progress")
+            func downloadSnapshotTracksProgress() async throws {
+                let repoID: Repo.ID = "google-t5/t5-base"
+                // Use a separate directory to ensure fresh download (not cached)
+                let cacheDir = Self.cacheDirectory.appending(path: "progress-cache")
+                try? FileManager.default.removeItem(at: cacheDir)
 
-            let cache = HubCache(cacheDirectory: cacheDir)
-            let client = HubClient(
-                host: URL(string: "https://huggingface.co")!,
-                cache: cache
-            )
-            let (progressStream, yielder) = makeProgressStream()
+                let cache = HubCache(cacheDirectory: cacheDir)
+                let client = HubClient(
+                    host: URL(string: "https://huggingface.co")!,
+                    cache: cache
+                )
+                let (progressStream, yielder) = makeProgressStream()
 
-            _ = try await client.downloadSnapshot(
-                of: repoID,
-                matching: ["*.json"]
-            ) { progress in
-                yielder.yield(progress.fractionCompleted)
+                _ = try await client.downloadSnapshot(
+                    of: repoID,
+                    matching: ["*.json"]
+                ) { progress in
+                    yielder.yield(progress.fractionCompleted)
+                }
+                yielder.finish()
+
+                // Get the last progress value from the stream
+                var lastProgress: Double = 0
+                for await progress in progressStream {
+                    lastProgress = progress
+                }
+                #expect(lastProgress == 1.0)
             }
-            yielder.finish()
-
-            // Get the last progress value from the stream
-            var lastProgress: Double = 0
-            for await progress in progressStream {
-                lastProgress = progress
-            }
-            #expect(lastProgress == 1.0)
-        }
+        #endif
 
         @Test("Download snapshot reports aggregate speed")
         func downloadSnapshotReportsSpeed() async throws {
@@ -300,13 +304,13 @@ private func makeProgressStream() -> (
             )
 
             // Download again with commit hash - should be very fast (no API calls)
-            let start = CFAbsoluteTimeGetCurrent()
+            let start = Date().timeIntervalSinceReferenceDate
             let snapshotPath = try await client.downloadSnapshot(
                 of: repoID,
                 revision: commitHash,
                 matching: ["config.json"]
             )
-            let elapsed = CFAbsoluteTimeGetCurrent() - start
+            let elapsed = Date().timeIntervalSinceReferenceDate - start
 
             // Should complete in under 100ms (just cache lookup, no network)
             #expect(elapsed < 0.1, "Expected cache hit to be fast (< 100ms), got \(elapsed * 1000)ms")
@@ -474,225 +478,230 @@ private func makeProgressStream() -> (
         }
 
         // MARK: - Resume From Incomplete File Tests
+        // Resume and 416 handling use URLSession.download(for:delegate:), which is not
+        // available on Linux (FoundationNetworking uses libcurl without resume support).
 
-        @Test("Download with existing incomplete file succeeds")
-        func downloadWithExistingIncompleteFile() async throws {
-            // Verifies that downloads complete successfully when an incomplete file exists.
-            // The code sends a Range header to resume, but the server may return either:
-            // - 206 Partial Content: resume works, incomplete prefix is preserved
-            // - 200 OK: server doesn't support Range, code falls back to full download
-            //
-            // Both behaviors are correct. This test verifies the code handles both cases
-            // and produces a valid final file regardless of server behavior.
-            let repoID: Repo.ID = "google-t5/t5-base"
-            let filename = "config.json"
+        #if !canImport(FoundationNetworking)
+            @Test("Download with existing incomplete file succeeds")
+            func downloadWithExistingIncompleteFile() async throws {
+                // Verifies that downloads complete successfully when an incomplete file exists.
+                // The code sends a Range header to resume, but the server may return either:
+                // - 206 Partial Content: resume works, incomplete prefix is preserved
+                // - 200 OK: server doesn't support Range, code falls back to full download
+                //
+                // Both behaviors are correct. This test verifies the code handles both cases
+                // and produces a valid final file regardless of server behavior.
+                let repoID: Repo.ID = "google-t5/t5-base"
+                let filename = "config.json"
 
-            let cacheDir = Self.cacheDirectory.appending(path: "resume-incomplete-cache")
-            try? FileManager.default.removeItem(at: cacheDir)
+                let cacheDir = Self.cacheDirectory.appending(path: "resume-incomplete-cache")
+                try? FileManager.default.removeItem(at: cacheDir)
 
-            let cache = HubCache(cacheDirectory: cacheDir)
-            let client = HubClient(
-                host: URL(string: "https://huggingface.co")!,
-                cache: cache
-            )
+                let cache = HubCache(cacheDirectory: cacheDir)
+                let client = HubClient(
+                    host: URL(string: "https://huggingface.co")!,
+                    cache: cache
+                )
 
-            // Download the file to get its etag and content
-            let cachedPath = try await client.downloadFile(
-                at: filename,
-                from: repoID
-            )
+                // Download the file to get its etag and content
+                let cachedPath = try await client.downloadFile(
+                    at: filename,
+                    from: repoID
+                )
 
-            let completeContent = try Data(contentsOf: cachedPath)
-            #expect(completeContent.count > 100, "Test file should be larger than 100 bytes")
+                let completeContent = try Data(contentsOf: cachedPath)
+                #expect(completeContent.count > 100, "Test file should be larger than 100 bytes")
 
-            // Find the blob and its etag
-            let blobsDir = cache.blobsDirectory(repo: repoID, kind: .model)
-            let blobs = try FileManager.default.contentsOfDirectory(atPath: blobsDir.path)
-                .filter { !$0.hasSuffix(".lock") && !$0.hasSuffix(".incomplete") }
-            let etag = try #require(blobs.first, "Should have at least one blob")
+                // Find the blob and its etag
+                let blobsDir = cache.blobsDirectory(repo: repoID, kind: .model)
+                let blobs = try FileManager.default.contentsOfDirectory(atPath: blobsDir.path)
+                    .filter { !$0.hasSuffix(".lock") && !$0.hasSuffix(".incomplete") }
+                let etag = try #require(blobs.first, "Should have at least one blob")
 
-            // Delete the blob to force re-download
-            let blobPath = blobsDir.appendingPathComponent(etag)
-            try FileManager.default.removeItem(at: blobPath)
+                // Delete the blob to force re-download
+                let blobPath = blobsDir.appendingPathComponent(etag)
+                try FileManager.default.removeItem(at: blobPath)
 
-            // Delete snapshot symlinks
-            let snapshotsDir = cache.snapshotsDirectory(repo: repoID, kind: .model)
-            if let contents = try? FileManager.default.contentsOfDirectory(atPath: snapshotsDir.path) {
-                for commitDir in contents {
-                    let snapshotFile =
-                        snapshotsDir
-                        .appendingPathComponent(commitDir)
-                        .appendingPathComponent(filename)
-                    try? FileManager.default.removeItem(at: snapshotFile)
-                }
-            }
-
-            // Create an incomplete file with partial real content
-            let partialContent = completeContent.prefix(completeContent.count / 2)
-            let incompletePath = blobsDir.appendingPathComponent("\(etag).incomplete")
-            try Data(partialContent).write(to: incompletePath)
-
-            // Download again with incomplete file present
-            let redownloadedPath = try await client.downloadFile(
-                at: filename,
-                from: repoID
-            )
-
-            // Verify the final file is correct
-            let finalContent = try Data(contentsOf: redownloadedPath)
-            #expect(finalContent == completeContent, "Final file should match expected content")
-
-            // Verify incomplete file was cleaned up
-            #expect(
-                !FileManager.default.fileExists(atPath: incompletePath.path),
-                "Incomplete file should be removed after successful download"
-            )
-
-            // Verify blob exists
-            #expect(
-                FileManager.default.fileExists(atPath: blobPath.path),
-                "Blob should exist after download"
-            )
-        }
-
-        @Test("Download handles oversized incomplete file (416 scenario)")
-        func handleOversizedIncompleteFile() async throws {
-            // This test verifies graceful handling when an incomplete file is larger than
-            // the actual file. When a Range header requests bytes beyond the file size,
-            // the server returns 416 Range Not Satisfiable. The code should:
-            // 1. Delete the oversized incomplete file
-            // 2. Retry the download from scratch
-            // 3. Complete successfully with correct content
-            //
-            // Note: We can't directly verify the 416 response without HTTP mocking,
-            // but we verify the observable outcome: correct content despite bad state.
-            let repoID: Repo.ID = "google-t5/t5-base"
-            let filename = "config.json"
-
-            let cacheDir = Self.cacheDirectory.appending(path: "oversized-incomplete-cache")
-            try? FileManager.default.removeItem(at: cacheDir)
-
-            let cache = HubCache(cacheDirectory: cacheDir)
-            let client = HubClient(
-                host: URL(string: "https://huggingface.co")!,
-                cache: cache
-            )
-
-            // First download to get the etag and correct content
-            let cachedPath = try await client.downloadFile(
-                at: filename,
-                from: repoID
-            )
-
-            let completeContent = try Data(contentsOf: cachedPath)
-            let actualSize = completeContent.count
-
-            // Find the etag
-            let blobsDir = cache.blobsDirectory(repo: repoID, kind: .model)
-            let blobs = try FileManager.default.contentsOfDirectory(atPath: blobsDir.path)
-                .filter { !$0.hasSuffix(".lock") && !$0.hasSuffix(".incomplete") }
-            let etag = try #require(blobs.first)
-
-            // Delete the blob and snapshot to force re-download
-            let blobPath = blobsDir.appendingPathComponent(etag)
-            try FileManager.default.removeItem(at: blobPath)
-
-            let snapshotsDir = cache.snapshotsDirectory(repo: repoID, kind: .model)
-            if let contents = try? FileManager.default.contentsOfDirectory(atPath: snapshotsDir.path) {
-                for commitDir in contents {
-                    let snapshotFile =
-                        snapshotsDir
-                        .appendingPathComponent(commitDir)
-                        .appendingPathComponent(filename)
-                    try? FileManager.default.removeItem(at: snapshotFile)
-                }
-            }
-
-            // Create an OVERSIZED incomplete file with garbage data
-            // This simulates a corrupted/stale incomplete file larger than the actual file
-            let oversizedContent = Data(repeating: 0xFF, count: actualSize + 1000)
-            let incompletePath = blobsDir.appendingPathComponent("\(etag).incomplete")
-            try oversizedContent.write(to: incompletePath)
-
-            #expect(
-                oversizedContent.count > actualSize,
-                "Incomplete file (\(oversizedContent.count) bytes) must be larger than actual file (\(actualSize) bytes)"
-            )
-
-            // Download again - should handle 416 by deleting incomplete and retrying
-            let redownloadedPath = try await client.downloadFile(
-                at: filename,
-                from: repoID
-            )
-
-            // Verify the file is correct, not the garbage data
-            let downloadedContent = try Data(contentsOf: redownloadedPath)
-            #expect(downloadedContent == completeContent, "Downloaded content should match original")
-            #expect(
-                downloadedContent.count == actualSize,
-                "Downloaded file should be \(actualSize) bytes, not \(downloadedContent.count)"
-            )
-
-            // Verify incomplete file was cleaned up
-            #expect(
-                !FileManager.default.fileExists(atPath: incompletePath.path),
-                "Incomplete file should be removed"
-            )
-        }
-
-        // MARK: - Concurrent Download Tests
-
-        @Test("Concurrent downloads of same file use locking")
-        func concurrentDownloadsUseLocking() async throws {
-            // Verifies that concurrent downloads of the same file are properly
-            // serialized via file locking, preventing corruption.
-            let repoID: Repo.ID = "google-t5/t5-base"
-            let filename = "config.json"
-
-            let cacheDir = Self.cacheDirectory.appending(path: "concurrent-cache")
-            try? FileManager.default.removeItem(at: cacheDir)
-
-            let cache = HubCache(cacheDirectory: cacheDir)
-            let client = HubClient(
-                host: URL(string: "https://huggingface.co")!,
-                cache: cache
-            )
-
-            // Launch concurrent downloads of the same file
-            let concurrentCount = 5
-            try await withThrowingTaskGroup(of: URL.self) { group in
-                for _ in 0 ..< concurrentCount {
-                    group.addTask {
-                        try await client.downloadFile(
-                            at: filename,
-                            from: repoID
-                        )
+                // Delete snapshot symlinks
+                let snapshotsDir = cache.snapshotsDirectory(repo: repoID, kind: .model)
+                if let contents = try? FileManager.default.contentsOfDirectory(atPath: snapshotsDir.path) {
+                    for commitDir in contents {
+                        let snapshotFile =
+                            snapshotsDir
+                            .appendingPathComponent(commitDir)
+                            .appendingPathComponent(filename)
+                        try? FileManager.default.removeItem(at: snapshotFile)
                     }
                 }
 
-                var results: [URL] = []
-                for try await result in group {
-                    results.append(result)
-                }
+                // Create an incomplete file with partial real content
+                let partialContent = completeContent.prefix(completeContent.count / 2)
+                let incompletePath = blobsDir.appendingPathComponent("\(etag).incomplete")
+                try Data(partialContent).write(to: incompletePath)
 
-                #expect(results.count == concurrentCount, "All downloads should complete")
+                // Download again with incomplete file present
+                let redownloadedPath = try await client.downloadFile(
+                    at: filename,
+                    from: repoID
+                )
 
-                // All results should point to the same cache path
-                let uniquePaths = Set(results.map(\.path))
-                #expect(uniquePaths.count == 1, "All downloads should return the same cache path")
+                // Verify the final file is correct
+                let finalContent = try Data(contentsOf: redownloadedPath)
+                #expect(finalContent == completeContent, "Final file should match expected content")
+
+                // Verify incomplete file was cleaned up
+                #expect(
+                    !FileManager.default.fileExists(atPath: incompletePath.path),
+                    "Incomplete file should be removed after successful download"
+                )
+
+                // Verify blob exists
+                #expect(
+                    FileManager.default.fileExists(atPath: blobPath.path),
+                    "Blob should exist after download"
+                )
             }
 
-            // Verify only one blob exists (content-addressed, deduplicated)
-            let blobsDir = cache.blobsDirectory(repo: repoID, kind: .model)
-            let blobs = try FileManager.default.contentsOfDirectory(atPath: blobsDir.path)
-                .filter { !$0.hasSuffix(".lock") && !$0.hasSuffix(".incomplete") }
-            #expect(blobs.count == 1, "Should have exactly one blob (deduplicated)")
+            @Test("Download handles oversized incomplete file (416 scenario)")
+            func handleOversizedIncompleteFile() async throws {
+                // This test verifies graceful handling when an incomplete file is larger than
+                // the actual file. When a Range header requests bytes beyond the file size,
+                // the server returns 416 Range Not Satisfiable. The code should:
+                // 1. Delete the oversized incomplete file
+                // 2. Retry the download from scratch
+                // 3. Complete successfully with correct content
+                //
+                // Note: We can't directly verify the 416 response without HTTP mocking,
+                // but we verify the observable outcome: correct content despite bad state.
+                let repoID: Repo.ID = "google-t5/t5-base"
+                let filename = "config.json"
 
-            // Verify no incomplete files remain
-            let incompleteFiles = try FileManager.default.contentsOfDirectory(atPath: blobsDir.path)
-                .filter { $0.hasSuffix(".incomplete") }
-            #expect(incompleteFiles.isEmpty, "No incomplete files should remain")
-        }
+                let cacheDir = Self.cacheDirectory.appending(path: "oversized-incomplete-cache")
+                try? FileManager.default.removeItem(at: cacheDir)
+
+                let cache = HubCache(cacheDirectory: cacheDir)
+                let client = HubClient(
+                    host: URL(string: "https://huggingface.co")!,
+                    cache: cache
+                )
+
+                // First download to get the etag and correct content
+                let cachedPath = try await client.downloadFile(
+                    at: filename,
+                    from: repoID
+                )
+
+                let completeContent = try Data(contentsOf: cachedPath)
+                let actualSize = completeContent.count
+
+                // Find the etag
+                let blobsDir = cache.blobsDirectory(repo: repoID, kind: .model)
+                let blobs = try FileManager.default.contentsOfDirectory(atPath: blobsDir.path)
+                    .filter { !$0.hasSuffix(".lock") && !$0.hasSuffix(".incomplete") }
+                let etag = try #require(blobs.first)
+
+                // Delete the blob and snapshot to force re-download
+                let blobPath = blobsDir.appendingPathComponent(etag)
+                try FileManager.default.removeItem(at: blobPath)
+
+                let snapshotsDir = cache.snapshotsDirectory(repo: repoID, kind: .model)
+                if let contents = try? FileManager.default.contentsOfDirectory(atPath: snapshotsDir.path) {
+                    for commitDir in contents {
+                        let snapshotFile =
+                            snapshotsDir
+                            .appendingPathComponent(commitDir)
+                            .appendingPathComponent(filename)
+                        try? FileManager.default.removeItem(at: snapshotFile)
+                    }
+                }
+
+                // Create an OVERSIZED incomplete file with garbage data
+                // This simulates a corrupted/stale incomplete file larger than the actual file
+                let oversizedContent = Data(repeating: 0xFF, count: actualSize + 1000)
+                let incompletePath = blobsDir.appendingPathComponent("\(etag).incomplete")
+                try oversizedContent.write(to: incompletePath)
+
+                #expect(
+                    oversizedContent.count > actualSize,
+                    "Incomplete file (\(oversizedContent.count) bytes) must be larger than actual file (\(actualSize) bytes)"
+                )
+
+                // Download again - should handle 416 by deleting incomplete and retrying
+                let redownloadedPath = try await client.downloadFile(
+                    at: filename,
+                    from: repoID
+                )
+
+                // Verify the file is correct, not the garbage data
+                let downloadedContent = try Data(contentsOf: redownloadedPath)
+                #expect(downloadedContent == completeContent, "Downloaded content should match original")
+                #expect(
+                    downloadedContent.count == actualSize,
+                    "Downloaded file should be \(actualSize) bytes, not \(downloadedContent.count)"
+                )
+
+                // Verify incomplete file was cleaned up
+                #expect(
+                    !FileManager.default.fileExists(atPath: incompletePath.path),
+                    "Incomplete file should be removed"
+                )
+            }
+
+            // MARK: - Concurrent Download Tests
+            // Concurrent downloads on Linux crash libcurl (FoundationNetworking).
+
+            @Test("Concurrent downloads of same file use locking")
+            func concurrentDownloadsUseLocking() async throws {
+                // Verifies that concurrent downloads of the same file are properly
+                // serialized via file locking, preventing corruption.
+                let repoID: Repo.ID = "google-t5/t5-base"
+                let filename = "config.json"
+
+                let cacheDir = Self.cacheDirectory.appending(path: "concurrent-cache")
+                try? FileManager.default.removeItem(at: cacheDir)
+
+                let cache = HubCache(cacheDirectory: cacheDir)
+                let client = HubClient(
+                    host: URL(string: "https://huggingface.co")!,
+                    cache: cache
+                )
+
+                // Launch concurrent downloads of the same file
+                let concurrentCount = 5
+                try await withThrowingTaskGroup(of: URL.self) { group in
+                    for _ in 0 ..< concurrentCount {
+                        group.addTask {
+                            try await client.downloadFile(
+                                at: filename,
+                                from: repoID
+                            )
+                        }
+                    }
+
+                    var results: [URL] = []
+                    for try await result in group {
+                        results.append(result)
+                    }
+
+                    #expect(results.count == concurrentCount, "All downloads should complete")
+
+                    // All results should point to the same cache path
+                    let uniquePaths = Set(results.map(\.path))
+                    #expect(uniquePaths.count == 1, "All downloads should return the same cache path")
+                }
+
+                // Verify only one blob exists (content-addressed, deduplicated)
+                let blobsDir = cache.blobsDirectory(repo: repoID, kind: .model)
+                let blobs = try FileManager.default.contentsOfDirectory(atPath: blobsDir.path)
+                    .filter { !$0.hasSuffix(".lock") && !$0.hasSuffix(".incomplete") }
+                #expect(blobs.count == 1, "Should have exactly one blob (deduplicated)")
+
+                // Verify no incomplete files remain
+                let incompleteFiles = try FileManager.default.contentsOfDirectory(atPath: blobsDir.path)
+                    .filter { $0.hasSuffix(".incomplete") }
+                #expect(incompleteFiles.isEmpty, "No incomplete files should remain")
+            }
+        #endif
 
     }
 #endif

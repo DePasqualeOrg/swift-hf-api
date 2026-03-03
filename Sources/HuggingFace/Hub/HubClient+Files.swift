@@ -756,7 +756,7 @@ public extension HubClient {
             progress.totalUnitCount = resumeOffset + totalBytesExpectedToWrite
             progress.completedUnitCount = resumeOffset + totalBytesWritten
 
-            let elapsed = CFAbsoluteTimeGetCurrent() - startTime
+            let elapsed = Date().timeIntervalSinceReferenceDate - startTime
             if elapsed > 0 {
                 let bytesPerSecond = Double(totalBytesWritten) / elapsed
                 progress.setUserInfoObject(bytesPerSecond, forKey: .throughputKey)
@@ -1108,15 +1108,17 @@ public extension HubClient {
         let totalBytes = entries.reduce(Int64(0)) { $0 + Int64($1.size ?? 1) }
         let totalProgress = Progress(totalUnitCount: totalBytes)
         totalProgress.kind = .file
-        totalProgress.fileOperationKind = .downloading
-        let startTime = CFAbsoluteTimeGetCurrent()
+        #if !canImport(FoundationNetworking)
+            totalProgress.fileOperationKind = .downloading
+        #endif
+        let startTime = Date().timeIntervalSinceReferenceDate
         progressHandler?(totalProgress)
 
         // Track speed updates - updated periodically, handler called after file completions
         let speedUpdateTask = Task {
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: DownloadConstants.speedUpdateIntervalNanoseconds)
-                let elapsed = CFAbsoluteTimeGetCurrent() - startTime
+                let elapsed = Date().timeIntervalSinceReferenceDate - startTime
                 let bytesCompleted = totalProgress.completedUnitCount
                 if elapsed > 0 && bytesCompleted > 0 {
                     let speed = Double(bytesCompleted) / elapsed
@@ -1178,7 +1180,7 @@ public extension HubClient {
         }
 
         // Compute final speed before last handler call
-        let elapsed = CFAbsoluteTimeGetCurrent() - startTime
+        let elapsed = Date().timeIntervalSinceReferenceDate - startTime
         if elapsed > 0 && totalProgress.completedUnitCount > 0 {
             let finalSpeed = Double(totalProgress.completedUnitCount) / elapsed
             totalProgress.setUserInfoObject(finalSpeed, forKey: .throughputKey)

@@ -63,13 +63,13 @@ struct DownloadBenchmarks {
         )
 
         for i in 1 ... iterations {
-            let start = CFAbsoluteTimeGetCurrent()
+            let start = Date().timeIntervalSinceReferenceDate
             _ = try await client.downloadSnapshot(
                 of: repoID,
                 revision: commitHash,
                 matching: ["*.json"]
             )
-            let elapsed = (CFAbsoluteTimeGetCurrent() - start) * 1000
+            let elapsed = (Date().timeIntervalSinceReferenceDate - start) * 1000
             times.append(elapsed)
             printIteration(i, time: elapsed)
         }
@@ -94,12 +94,12 @@ struct DownloadBenchmarks {
             try? FileManager.default.removeItem(at: Self.cacheDirectory)
             let client = createClient()
 
-            let start = CFAbsoluteTimeGetCurrent()
+            let start = Date().timeIntervalSinceReferenceDate
             _ = try await client.downloadSnapshot(
                 of: repoID,
                 matching: ["*.json"]
             )
-            let elapsed = (CFAbsoluteTimeGetCurrent() - start) * 1000
+            let elapsed = (Date().timeIntervalSinceReferenceDate - start) * 1000
             times.append(elapsed)
             printIteration(i, time: elapsed)
         }
