@@ -351,8 +351,8 @@ private func makeProgressStream() -> (
             )
         }
 
-        @Test("cachedSnapshotPath returns nil for incomplete snapshots")
-        func cachedSnapshotPathReturnsNilForIncomplete() async throws {
+        @Test("resolveCachedSnapshot returns nil for incomplete snapshots")
+        func resolveCachedSnapshotReturnsNilForIncomplete() async throws {
             let repoID: Repo.ID = "google-t5/t5-base"
             let client = createClient()
 
@@ -366,16 +366,16 @@ private func makeProgressStream() -> (
                 matching: ["config.json"]
             )
 
-            // cachedSnapshotPath with the same glob should return the path
-            let samePath = client.cachedSnapshotPath(
+            // resolveCachedSnapshot with the same glob should return the path
+            let samePath = client.resolveCachedSnapshot(
                 repo: repoID,
                 revision: commitHash,
                 matching: ["config.json"]
             )
             #expect(samePath != nil)
 
-            // cachedSnapshotPath with a different glob should return nil
-            let differentPath = client.cachedSnapshotPath(
+            // resolveCachedSnapshot with a different glob should return nil
+            let differentPath = client.resolveCachedSnapshot(
                 repo: repoID,
                 revision: commitHash,
                 matching: ["tokenizer.json"]
@@ -389,7 +389,7 @@ private func makeProgressStream() -> (
                 revision: commitHash,
                 matching: ["tokenizer.json"]
             )
-            let bothPath = client.cachedSnapshotPath(
+            let bothPath = client.resolveCachedSnapshot(
                 repo: repoID,
                 revision: commitHash,
                 matching: ["config.json", "tokenizer.json"]

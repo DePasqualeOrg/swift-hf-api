@@ -928,19 +928,27 @@ public extension HubClient {
 // MARK: - Snapshot Cache Lookup
 
 public extension HubClient {
-    /// Returns the cached snapshot path if all files matching the given globs are present.
+    /// Returns the cached snapshot path if all files matching the given globs
+    /// are already downloaded, without making any network calls.
     ///
-    /// This method resolves the revision (commit hash or branch name) and checks
-    /// cached repo info to verify that all matching files have been downloaded.
-    /// Returns `nil` if the snapshot is missing, incomplete, or has no cached repo info.
+    /// This method resolves the revision (commit hash or branch name) to a
+    /// local commit hash and checks cached repo info to verify that all
+    /// matching files have been downloaded. Returns `nil` if the snapshot is
+    /// missing, incomplete, or has no cached repo info.
+    ///
+    /// Use this method to avoid the latency of a network call when you only
+    /// need to check whether files are already available locally. For branch
+    /// names (e.g. "main"), the returned snapshot may not reflect the latest
+    /// remote version — use ``downloadSnapshot(of:kind:revision:matching:to:localFilesOnly:maxConcurrent:progressHandler:)``
+    /// when freshness matters.
     ///
     /// - Parameters:
     ///   - repo: Repository identifier
     ///   - kind: Kind of repository
     ///   - revision: Git revision (branch, tag, or commit hash)
     ///   - globs: Glob patterns to filter files (empty array checks all files)
-    /// - Returns: Path to the verified snapshot directory, or `nil`.
-    func cachedSnapshotPath(
+    /// - Returns: Path to the verified snapshot directory, or `nil`
+    func resolveCachedSnapshot(
         repo: Repo.ID,
         kind: Repo.Kind = .model,
         revision: String,
