@@ -4,42 +4,53 @@ import Foundation
 
 // MARK: - Datasets API
 
-extension HubClient {
-    /// Lists datasets from the Hub.
+public extension HubClient {
+    /// Lists datasets from the Hub with automatic pagination.
+    ///
+    /// ```swift
+    /// for try await dataset in client.listDatasets(author: "huggingface") {
+    ///     print(dataset.name)
+    /// }
+    /// ```
     ///
     /// - Parameters:
     ///   - search: Filter based on substrings for repos and their usernames.
     ///   - author: Filter datasets by an author or organization.
     ///   - filter: Filter based on tags (e.g., "task_categories:text-classification").
     ///   - sort: Property to use when sorting (e.g., "downloads", "author").
-    ///   - direction: Direction in which to sort.
-    ///   - limit: Limit the number of datasets fetched.
+    ///   - limit: Maximum total number of datasets to return across all pages.
     ///   - full: Whether to fetch most dataset data, such as all tags, the files, etc.
     ///   - config: Whether to also fetch the repo config.
-    /// - Returns: A paginated response containing dataset information.
-    /// - Throws: An error if the request fails or the response cannot be decoded.
-    public func listDatasets(
+    /// - Returns: An async sequence of datasets.
+    func listDatasets(
         search: String? = nil,
         author: String? = nil,
         filter: String? = nil,
         sort: String? = nil,
-        direction: SortDirection? = nil,
         limit: Int? = nil,
         full: Bool? = nil,
         config: Bool? = nil
-    ) async throws -> PaginatedResponse<Dataset> {
+    ) -> PaginatedSequence<Dataset> {
         var params: [String: Value] = [:]
 
         if let search { params["search"] = .string(search) }
         if let author { params["author"] = .string(author) }
         if let filter { params["filter"] = .string(filter) }
         if let sort { params["sort"] = .string(sort) }
-        if let direction { params["direction"] = .int(direction.rawValue) }
         if let limit { params["limit"] = .int(limit) }
         if let full { params["full"] = .bool(full) }
         if let config { params["config"] = .bool(config) }
 
-        return try await httpClient.fetchPaginated(.get, "/api/datasets", params: params)
+        let capturedParams = params
+        return PaginatedSequence(
+            limit: limit,
+            firstPage: { [httpClient] in
+                try await httpClient.fetchPaginated(.get, "/api/datasets", params: capturedParams)
+            },
+            nextPage: { [httpClient] url in
+                try await httpClient.fetchPaginated(.get, url: url)
+            }
+        )
     }
 
     /// Gets information for a specific dataset.
@@ -50,7 +61,7 @@ extension HubClient {
     ///   - full: Whether to fetch most dataset data.
     /// - Returns: Information about the dataset.
     /// - Throws: An error if the request fails or the response cannot be decoded.
-    public func getDataset(
+    func getDataset(
         _ id: Repo.ID,
         revision: String? = nil,
         full: Bool? = nil
@@ -77,7 +88,7 @@ extension HubClient {
     ///
     /// - Returns: Tag information organized by type.
     /// - Throws: An error if the request fails or the response cannot be decoded.
-    public func getDatasetTags() async throws -> Tags {
+    func getDatasetTags() async throws -> Tags {
         return try await httpClient.fetch(.get, "/api/datasets-tags-by-type")
     }
 
@@ -89,7 +100,7 @@ extension HubClient {
     ///   - split: Optional split name.
     /// - Returns: List of Parquet file information.
     /// - Throws: An error if the request fails or the response cannot be decoded.
-    public func listParquetFiles(
+    func listParquetFiles(
         _ id: Repo.ID,
         subset: String? = nil,
         split: String? = nil
@@ -116,7 +127,7 @@ extension HubClient {
     ///   - institution: The institution associated with the request.
     /// - Returns: `true` if the request was submitted successfully.
     /// - Throws: An error if the request fails.
-    public func requestDatasetAccess(
+    func requestDatasetAccess(
         _ id: Repo.ID,
         reason: String? = nil,
         institution: String? = nil
@@ -134,7 +145,7 @@ extension HubClient {
     /// - Parameter id: The repository identifier.
     /// - Returns: `true` if the request was cancelled successfully.
     /// - Throws: An error if the request fails.
-    public func cancelDatasetAccessRequest(_ id: Repo.ID) async throws -> Bool {
+    func cancelDatasetAccessRequest(_ id: Repo.ID) async throws -> Bool {
         let url = httpClient.host
             .appending(path: "api")
             .appending(path: "datasets")
@@ -151,7 +162,7 @@ extension HubClient {
     /// - Parameter id: The repository identifier.
     /// - Returns: `true` if access was granted successfully.
     /// - Throws: An error if the request fails.
-    public func grantDatasetAccess(_ id: Repo.ID) async throws -> Bool {
+    func grantDatasetAccess(_ id: Repo.ID) async throws -> Bool {
         let url = httpClient.host
             .appending(path: "api")
             .appending(path: "datasets")
@@ -168,7 +179,7 @@ extension HubClient {
     /// - Parameter id: The repository identifier.
     /// - Returns: `true` if the request was handled successfully.
     /// - Throws: An error if the request fails.
-    public func handleDatasetAccessRequest(_ id: Repo.ID) async throws -> Bool {
+    func handleDatasetAccessRequest(_ id: Repo.ID) async throws -> Bool {
         let url = httpClient.host
             .appending(path: "api")
             .appending(path: "datasets")
@@ -187,7 +198,7 @@ extension HubClient {
     ///   - status: The status to filter by ("pending", "accepted", "rejected").
     /// - Returns: A list of access requests.
     /// - Throws: An error if the request fails or the response cannot be decoded.
-    public func listDatasetAccessRequests(
+    func listDatasetAccessRequests(
         _ id: Repo.ID,
         status: AccessRequest.Status
     ) async throws -> [AccessRequest] {
@@ -206,7 +217,7 @@ extension HubClient {
     /// - Parameter id: The repository identifier.
     /// - Returns: User access report data.
     /// - Throws: An error if the request fails.
-    public func getDatasetUserAccessReport(_ id: Repo.ID) async throws -> Data {
+    func getDatasetUserAccessReport(_ id: Repo.ID) async throws -> Data {
         let url = httpClient.host
             .appending(path: "datasets")
             .appending(path: id.namespace)
@@ -224,7 +235,7 @@ extension HubClient {
     ///   - resourceGroupId: The resource group ID to set, or nil to unset.
     /// - Returns: Resource group response information.
     /// - Throws: An error if the request fails or the response cannot be decoded.
-    public func setDatasetResourceGroup(
+    func setDatasetResourceGroup(
         _ id: Repo.ID,
         resourceGroupId: String?
     ) async throws -> ResourceGroup {
@@ -247,7 +258,7 @@ extension HubClient {
     /// - Parameter id: The repository identifier.
     /// - Returns: `true` if the scan was initiated successfully.
     /// - Throws: An error if the request fails.
-    public func scanDataset(_ id: Repo.ID) async throws -> Bool {
+    func scanDataset(_ id: Repo.ID) async throws -> Bool {
         let url = httpClient.host
             .appending(path: "api")
             .appending(path: "datasets")
@@ -267,7 +278,7 @@ extension HubClient {
     ///   - message: An optional message for the tag.
     /// - Returns: `true` if the tag was created successfully.
     /// - Throws: An error if the request fails.
-    public func createDatasetTag(
+    func createDatasetTag(
         _ id: Repo.ID,
         revision: String,
         tag: String,
@@ -298,7 +309,7 @@ extension HubClient {
     ///   - message: The commit message for the squashed commit.
     /// - Returns: The new commit ID.
     /// - Throws: An error if the request fails or the response cannot be decoded.
-    public func superSquashDataset(
+    func superSquashDataset(
         _ id: Repo.ID,
         revision: String,
         message: String

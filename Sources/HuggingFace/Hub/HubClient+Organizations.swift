@@ -4,27 +4,41 @@ import Foundation
 
 // MARK: - Organizations API
 
-extension HubClient {
-    /// Lists organizations from the Hub.
+public extension HubClient {
+    /// Lists organizations from the Hub with automatic pagination.
+    ///
+    /// ```swift
+    /// for try await org in client.listOrganizations() {
+    ///     print(org.name)
+    /// }
+    /// ```
     ///
     /// - Parameters:
     ///   - search: Search term to filter organizations.
     ///   - sort: Property to use when sorting (e.g., "createdAt").
-    ///   - limit: Limit the number of organizations fetched.
-    /// - Returns: A paginated response containing organization information.
-    /// - Throws: An error if the request fails or the response cannot be decoded.
-    public func listOrganizations(
+    ///   - limit: Maximum total number of organizations to return across all pages.
+    /// - Returns: An async sequence of organizations.
+    func listOrganizations(
         search: String? = nil,
         sort: String? = nil,
         limit: Int? = nil
-    ) async throws -> PaginatedResponse<Organization> {
+    ) -> PaginatedSequence<Organization> {
         var params: [String: Value] = [:]
 
         if let search { params["search"] = .string(search) }
         if let sort { params["sort"] = .string(sort) }
         if let limit { params["limit"] = .int(limit) }
 
-        return try await httpClient.fetchPaginated(.get, "/api/organizations", params: params)
+        let capturedParams = params
+        return PaginatedSequence(
+            limit: limit,
+            firstPage: { [httpClient] in
+                try await httpClient.fetchPaginated(.get, "/api/organizations", params: capturedParams)
+            },
+            nextPage: { [httpClient] url in
+                try await httpClient.fetchPaginated(.get, url: url)
+            }
+        )
     }
 
     /// Gets information for a specific organization.
@@ -32,7 +46,7 @@ extension HubClient {
     /// - Parameter id: The organization's identifier (e.g., "huggingface").
     /// - Returns: Information about the organization.
     /// - Throws: An error if the request fails or the response cannot be decoded.
-    public func getOrganization(_ id: String) async throws -> Organization {
+    func getOrganization(_ id: String) async throws -> Organization {
         return try await httpClient.fetch(.get, "/api/organizations/\(id)")
     }
 
@@ -43,7 +57,7 @@ extension HubClient {
     /// - Parameter id: The organization's identifier.
     /// - Returns: A list of organization members.
     /// - Throws: An error if the request fails or the response cannot be decoded.
-    public func listOrganizationMembers(_ id: String) async throws -> [Organization.Member] {
+    func listOrganizationMembers(_ id: String) async throws -> [Organization.Member] {
         return try await httpClient.fetch(.get, "/api/organizations/\(id)/members")
     }
 
@@ -58,7 +72,7 @@ extension HubClient {
     ///   - periodId: Optional period ID to get usage for a specific period.
     /// - Returns: Organization billing usage information.
     /// - Throws: An error if the request fails or the response cannot be decoded.
-    public func getOrganizationBillingUsage(
+    func getOrganizationBillingUsage(
         name: String,
         periodId: String? = nil
     ) async throws -> Billing.Usage {
@@ -75,7 +89,7 @@ extension HubClient {
     /// - Parameter name: The organization's name.
     /// - Returns: Live organization billing usage information.
     /// - Throws: An error if the request fails or the response cannot be decoded.
-    public func getOrganizationBillingUsageLive(name: String) async throws -> Billing.Usage {
+    func getOrganizationBillingUsageLive(name: String) async throws -> Billing.Usage {
         return try await httpClient.fetch(.get, "/api/organizations/\(name)/billing/usage/live")
     }
 
@@ -94,7 +108,7 @@ extension HubClient {
     ///   - autoJoin: Auto-join configuration for the resource group.
     /// - Returns: `true` if the resource group was created successfully.
     /// - Throws: An error if the request fails.
-    public func createOrganizationResourceGroup(
+    func createOrganizationResourceGroup(
         name: String,
         resourceGroupName: String,
         description: String? = nil,

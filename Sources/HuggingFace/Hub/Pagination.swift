@@ -11,7 +11,7 @@ import Foundation
 /// An async sequence that automatically paginates through API results.
 ///
 /// ```swift
-/// for try await model in client.listAllModels() {
+/// for try await model in client.listModels() {
 ///     print(model.name)
 /// }
 /// ```
@@ -101,15 +101,84 @@ public struct PaginatedSequence<T: Decodable & Sendable>: AsyncSequence, Sendabl
     }
 }
 
-// MARK: - Sort Direction
+// MARK: - Page Sequence
 
-/// Sort direction for list queries.
-public enum SortDirection: Int, Hashable, Sendable {
-    /// Ascending order.
-    case ascending = 1
+/// An async sequence that yields pages of results.
+///
+/// Use this when you need page-level access for batch processing:
+/// ```swift
+/// for try await page in client.listModels().pages {
+///     processBatch(page.items)
+/// }
+/// ```
+public struct PageSequence<T: Decodable & Sendable>: AsyncSequence, Sendable {
+    public typealias Element = PaginatedResponse<T>
 
-    /// Descending order.
-    case descending = -1
+    private let firstPageFetcher: @Sendable () async throws -> PaginatedResponse<T>
+    private let nextPageFetcher: @Sendable (URL) async throws -> PaginatedResponse<T>
+
+    init(
+        firstPage: @escaping @Sendable () async throws -> PaginatedResponse<T>,
+        nextPage: @escaping @Sendable (URL) async throws -> PaginatedResponse<T>
+    ) {
+        firstPageFetcher = firstPage
+        nextPageFetcher = nextPage
+    }
+
+    public func makeAsyncIterator() -> AsyncIterator {
+        AsyncIterator(
+            firstPageFetcher: firstPageFetcher,
+            nextPageFetcher: nextPageFetcher
+        )
+    }
+
+    public struct AsyncIterator: AsyncIteratorProtocol {
+        private let firstPageFetcher: @Sendable () async throws -> PaginatedResponse<T>
+        private let nextPageFetcher: @Sendable (URL) async throws -> PaginatedResponse<T>
+        private var nextURL: URL?
+        private var fetchedFirstPage = false
+
+        init(
+            firstPageFetcher: @escaping @Sendable () async throws -> PaginatedResponse<T>,
+            nextPageFetcher: @escaping @Sendable (URL) async throws -> PaginatedResponse<T>
+        ) {
+            self.firstPageFetcher = firstPageFetcher
+            self.nextPageFetcher = nextPageFetcher
+        }
+
+        public mutating func next() async throws -> PaginatedResponse<T>? {
+            let page: PaginatedResponse<T>
+            if !fetchedFirstPage {
+                fetchedFirstPage = true
+                page = try await firstPageFetcher()
+            } else if let url = nextURL {
+                page = try await nextPageFetcher(url)
+            } else {
+                return nil
+            }
+
+            nextURL = page.nextURL
+            return page
+        }
+    }
+}
+
+// MARK: - Pages Access
+
+extension PaginatedSequence {
+    /// Access page-level iteration for batch processing.
+    ///
+    /// ```swift
+    /// for try await page in client.listModels().pages {
+    ///     processBatch(page.items)
+    /// }
+    /// ```
+    public var pages: PageSequence<T> {
+        PageSequence(
+            firstPage: firstPageFetcher,
+            nextPage: nextPageFetcher
+        )
+    }
 }
 
 /// A response that includes pagination information from Link headers.

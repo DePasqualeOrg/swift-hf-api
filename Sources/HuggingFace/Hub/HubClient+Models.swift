@@ -7,11 +7,16 @@ import Foundation
 public extension HubClient {
     /// Lists models from the Hub with automatic pagination.
     ///
-    /// This method returns an async sequence that automatically handles pagination,
-    /// yielding individual models as they are fetched:
     /// ```swift
-    /// for try await model in client.listAllModels(author: "google") {
+    /// for try await model in client.listModels(author: "google") {
     ///     print(model.name)
+    /// }
+    /// ```
+    ///
+    /// For page-level access:
+    /// ```swift
+    /// for try await page in client.listModels().pages {
+    ///     processBatch(page.items)
     /// }
     /// ```
     ///
@@ -20,19 +25,15 @@ public extension HubClient {
     ///   - author: Filter models by an author or organization.
     ///   - filter: Filter based on tags (e.g., "text-classification").
     ///   - sort: Property to use when sorting (e.g., "downloads", "author").
-    ///   - direction: Direction in which to sort.
-    ///   - limit: Maximum total number of models to return across all pages. This also sets the
-///            API's per-page size for efficiency. For example, `limit: 100` returns at most
-///            100 models total (matching Python's `list_models(limit=100)` behavior).
+    ///   - limit: Maximum total number of models to return across all pages.
     ///   - full: Whether to fetch most model data, such as all tags, the files, etc.
     ///   - config: Whether to also fetch the repo config.
     /// - Returns: An async sequence of models.
-    func listAllModels(
+    func listModels(
         search: String? = nil,
         author: String? = nil,
         filter: String? = nil,
         sort: String? = nil,
-        direction: SortDirection? = nil,
         limit: Int? = nil,
         full: Bool? = nil,
         config: Bool? = nil
@@ -43,7 +44,6 @@ public extension HubClient {
         if let author { params["author"] = .string(author) }
         if let filter { params["filter"] = .string(filter) }
         if let sort { params["sort"] = .string(sort) }
-        if let direction { params["direction"] = .int(direction.rawValue) }
         if let limit { params["limit"] = .int(limit) }
         if let full { params["full"] = .bool(full) }
         if let config { params["config"] = .bool(config) }
@@ -58,49 +58,6 @@ public extension HubClient {
                 try await httpClient.fetchPaginated(.get, url: url)
             }
         )
-    }
-
-    /// Lists models from the Hub (single page).
-    ///
-    /// - Parameters:
-    ///   - search: Filter based on substrings for repos and their usernames.
-    ///   - author: Filter models by an author or organization.
-    ///   - filter: Filter based on tags (e.g., "text-classification").
-    ///   - sort: Property to use when sorting (e.g., "downloads", "author").
-    ///   - direction: Direction in which to sort.
-    ///   - limit: Limit the number of models fetched.
-    ///   - full: Whether to fetch most model data, such as all tags, the files, etc.
-    ///   - config: Whether to also fetch the repo config.
-    /// - Returns: A paginated response containing model information.
-    /// - Throws: An error if the request fails or the response cannot be decoded.
-    @available(
-        *,
-        deprecated,
-        message:
-            "Use listAllModels() instead, which provides automatic pagination matching huggingface_hub's list_models()."
-    )
-    func listModels(
-        search: String? = nil,
-        author: String? = nil,
-        filter: String? = nil,
-        sort: String? = nil,
-        direction: SortDirection? = nil,
-        limit: Int? = nil,
-        full: Bool? = nil,
-        config: Bool? = nil
-    ) async throws -> PaginatedResponse<Model> {
-        var params: [String: Value] = [:]
-
-        if let search { params["search"] = .string(search) }
-        if let author { params["author"] = .string(author) }
-        if let filter { params["filter"] = .string(filter) }
-        if let sort { params["sort"] = .string(sort) }
-        if let direction { params["direction"] = .int(direction.rawValue) }
-        if let limit { params["limit"] = .int(limit) }
-        if let full { params["full"] = .bool(full) }
-        if let config { params["config"] = .bool(config) }
-
-        return try await httpClient.fetchPaginated(.get, "/api/models", params: params)
     }
 
     /// Gets information for a specific model.

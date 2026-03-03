@@ -172,6 +172,81 @@ struct PaginationTests {
         #expect(fetchCount.value == 0)  // Never fetched because limit is 0
     }
 
+    // MARK: - PageSequence Tests
+
+    @Test("PageSequence yields pages of results")
+    func pageSequenceYieldsPages() async throws {
+        let page2URL = URL(string: "https://example.com/page2")!
+        let fetchCount = Counter()
+
+        let sequence = PaginatedSequence<Int>(
+            limit: nil,
+            firstPage: {
+                fetchCount.increment()
+                return PaginatedResponse(items: [1, 2, 3], nextURL: page2URL)
+            },
+            nextPage: { _ in
+                fetchCount.increment()
+                return PaginatedResponse(items: [4, 5], nextURL: nil)
+            }
+        )
+
+        var pages: [PaginatedResponse<Int>] = []
+        for try await page in sequence.pages {
+            pages.append(page)
+        }
+
+        #expect(pages.count == 2)
+        #expect(pages[0].items == [1, 2, 3])
+        #expect(pages[0].nextURL == page2URL)
+        #expect(pages[1].items == [4, 5])
+        #expect(pages[1].nextURL == nil)
+        #expect(fetchCount.value == 2)
+    }
+
+    @Test("PageSequence handles single page")
+    func pageSequenceSinglePage() async throws {
+        let sequence = PaginatedSequence<Int>(
+            limit: nil,
+            firstPage: {
+                PaginatedResponse(items: [1, 2], nextURL: nil)
+            },
+            nextPage: { _ in
+                PaginatedResponse(items: [], nextURL: nil)
+            }
+        )
+
+        var pages: [PaginatedResponse<Int>] = []
+        for try await page in sequence.pages {
+            pages.append(page)
+        }
+
+        #expect(pages.count == 1)
+        #expect(pages[0].items == [1, 2])
+    }
+
+    @Test("PageSequence handles empty first page")
+    func pageSequenceEmptyFirstPage() async throws {
+        let sequence = PaginatedSequence<Int>(
+            limit: nil,
+            firstPage: {
+                PaginatedResponse(items: [], nextURL: nil)
+            },
+            nextPage: { _ in
+                PaginatedResponse(items: [], nextURL: nil)
+            }
+        )
+
+        var pages: [PaginatedResponse<Int>] = []
+        for try await page in sequence.pages {
+            pages.append(page)
+        }
+
+        // PageSequence yields every page including empty ones (no next URL stops iteration)
+        #expect(pages.count == 1)
+        #expect(pages[0].items.isEmpty)
+    }
+
     // MARK: - Rate Limit Header Parsing Tests
 
     @Test("Parses IETF ratelimit header format")
@@ -495,7 +570,7 @@ struct PaginationTests {
             let client = createMockClient()
 
             await #expect(throws: HTTPClientError.self) {
-                for try await _ in client.listAllModels() {}
+                for try await _ in client.listModels() {}
             }
 
             // First page uses .none retry config - only 1 request, no retries
@@ -549,7 +624,7 @@ struct PaginationTests {
 
             let client = createMockClient()
             var models: [Model] = []
-            for try await model in client.listAllModels() {
+            for try await model in client.listModels() {
                 models.append(model)
             }
 
@@ -593,7 +668,7 @@ struct PaginationTests {
             let client = createMockClient()
 
             await #expect(throws: HTTPClientError.self) {
-                for try await _ in client.listAllModels() {}
+                for try await _ in client.listModels() {}
             }
 
             // No retry on client errors - just 2 requests total
@@ -635,7 +710,7 @@ struct PaginationTests {
             let client = createMockClient()
 
             await #expect(throws: HTTPClientError.self) {
-                for try await _ in client.listAllModels() {}
+                for try await _ in client.listModels() {}
             }
 
             // RetryConfiguration.default has maxRetries=5
@@ -688,7 +763,7 @@ struct PaginationTests {
 
             let client = createMockClient()
             var models: [Model] = []
-            for try await model in client.listAllModels() {
+            for try await model in client.listModels() {
                 models.append(model)
             }
 
@@ -739,7 +814,7 @@ struct PaginationTests {
 
             let client = createMockClient()
             var models: [Model] = []
-            for try await model in client.listAllModels() {
+            for try await model in client.listModels() {
                 models.append(model)
             }
 
@@ -783,7 +858,7 @@ struct PaginationTests {
 
             let task = Task {
                 var models: [Model] = []
-                for try await model in client.listAllModels() {
+                for try await model in client.listModels() {
                     models.append(model)
                 }
                 return models
@@ -822,7 +897,7 @@ struct PaginationIntegrationTests {
         let client = HubClient()
         var count = 0
 
-        for try await _ in client.listAllModels(limit: 6) {
+        for try await _ in client.listModels(limit: 6) {
             count += 1
         }
 
@@ -837,7 +912,7 @@ struct PaginationIntegrationTests {
         let client = HubClient()
         var count = 0
 
-        for try await _ in client.listAllModels(limit: 25) {
+        for try await _ in client.listModels(limit: 25) {
             count += 1
         }
 
@@ -850,7 +925,7 @@ struct PaginationIntegrationTests {
         var count = 0
 
         // Request a small limit that should stop mid-page
-        for try await _ in client.listAllModels(limit: 3) {
+        for try await _ in client.listModels(limit: 3) {
             count += 1
         }
 

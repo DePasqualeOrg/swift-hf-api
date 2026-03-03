@@ -64,7 +64,7 @@ import Testing
 
             let client = createMockClient()
             var models: [Model] = []
-            for try await model in client.listAllModels() {
+            for try await model in client.listModels() {
                 models.append(model)
             }
 
@@ -104,7 +104,7 @@ import Testing
 
             let client = createMockClient()
             var models: [Model] = []
-            for try await model in client.listAllModels(search: "bert") {
+            for try await model in client.listModels(search: "bert") {
                 models.append(model)
             }
 
@@ -175,7 +175,7 @@ import Testing
 
             let client = createMockClient()
             var models: [Model] = []
-            for try await model in client.listAllModels() {
+            for try await model in client.listModels() {
                 models.append(model)
             }
 
@@ -187,7 +187,7 @@ import Testing
         }
 
         @Test("List all models respects limit", .mockURLSession)
-        func listAllModelsWithLimit() async throws {
+        func listModelsWithLimit() async throws {
             let mockResponse = """
                 [
                     {
@@ -232,7 +232,7 @@ import Testing
 
             let client = createMockClient()
             var models: [Model] = []
-            for try await model in client.listAllModels(limit: 2) {
+            for try await model in client.listModels(limit: 2) {
                 models.append(model)
             }
 
@@ -465,7 +465,7 @@ import Testing
         @Test("List models returns results from real API")
         func listModelsFromAPI() async throws {
             var count = 0
-            for try await model in client.listAllModels(limit: 10) {
+            for try await model in client.listModels(limit: 10) {
                 count += 1
                 // Verify basic model properties are populated
                 #expect(!model.id.rawValue.isEmpty)
@@ -478,7 +478,7 @@ import Testing
         @Test("List models with search parameter")
         func listModelsWithSearch() async throws {
             var count = 0
-            for try await model in client.listAllModels(search: "bert", limit: 10) {
+            for try await model in client.listModels(search: "bert", limit: 10) {
                 count += 1
                 // Verify search results contain "bert" in the model ID
                 #expect(model.id.rawValue.lowercased().contains("bert"))
@@ -490,7 +490,7 @@ import Testing
         @Test("List models with author filter")
         func listModelsWithAuthor() async throws {
             var count = 0
-            for try await model in client.listAllModels(author: "google", limit: 10) {
+            for try await model in client.listModels(author: "google", limit: 10) {
                 count += 1
                 // Verify all models are from the specified author by checking namespace
                 // (the author field may not be populated in list responses)
@@ -504,7 +504,7 @@ import Testing
         func paginateModels() async throws {
             // Make real API calls and verify pagination works
             var count = 0
-            for try await _ in client.listAllModels(limit: 5) {
+            for try await _ in client.listModels(limit: 5) {
                 count += 1
             }
 
@@ -516,7 +516,7 @@ import Testing
             // Request more items than a single page returns (default page size is typically 20-100)
             // to ensure pagination actually works across pages
             var count = 0
-            for try await _ in client.listAllModels(limit: 50) {
+            for try await _ in client.listModels(limit: 50) {
                 count += 1
             }
 
@@ -549,7 +549,7 @@ import Testing
         @Test("List models sorted by downloads")
         func listModelsSortByDownloads() async throws {
             var count = 0
-            for try await model in client.listAllModels(sort: "downloads", limit: 10) {
+            for try await model in client.listModels(sort: "downloads", limit: 10) {
                 count += 1
                 // Sorted results should have downloads populated
                 #expect(model.downloads != nil)
@@ -560,7 +560,7 @@ import Testing
         @Test("List models sorted by likes")
         func listModelsSortByLikes() async throws {
             var count = 0
-            for try await model in client.listAllModels(sort: "likes", limit: 10) {
+            for try await model in client.listModels(sort: "likes", limit: 10) {
                 count += 1
                 // Sorted results should have likes populated
                 #expect(model.likes != nil)
@@ -571,7 +571,7 @@ import Testing
         @Test("List models with filter parameter")
         func listModelsWithFilter() async throws {
             var count = 0
-            for try await model in client.listAllModels(filter: "text-generation", limit: 10) {
+            for try await model in client.listModels(filter: "text-generation", limit: 10) {
                 count += 1
                 // Models with filter should have the pipeline tag
                 #expect(model.pipelineTag == "text-generation" || model.tags?.contains("text-generation") == true)
@@ -582,7 +582,7 @@ import Testing
         @Test("List models with full parameter")
         func listModelsWithFull() async throws {
             var count = 0
-            for try await model in client.listAllModels(limit: 5, full: true) {
+            for try await model in client.listModels(limit: 5, full: true) {
                 count += 1
                 // Full response should include additional metadata
                 #expect(model.sha != nil || model.lastModified != nil)

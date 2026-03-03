@@ -4,39 +4,50 @@ import Foundation
 
 // MARK: - Spaces API
 
-extension HubClient {
-    /// Lists Spaces from the Hub.
+public extension HubClient {
+    /// Lists Spaces from the Hub with automatic pagination.
+    ///
+    /// ```swift
+    /// for try await space in client.listSpaces(author: "huggingface") {
+    ///     print(space.id)
+    /// }
+    /// ```
     ///
     /// - Parameters:
     ///   - search: Filter based on substrings for repos and their usernames.
     ///   - author: Filter spaces by an author or organization.
     ///   - filter: Filter based on tags.
     ///   - sort: Property to use when sorting (e.g., "likes", "author").
-    ///   - direction: Direction in which to sort.
-    ///   - limit: Limit the number of spaces fetched.
+    ///   - limit: Maximum total number of spaces to return across all pages.
     ///   - full: Whether to fetch most space data, such as all tags, the files, etc.
-    /// - Returns: A paginated response containing space information.
-    /// - Throws: An error if the request fails or the response cannot be decoded.
-    public func listSpaces(
+    /// - Returns: An async sequence of spaces.
+    func listSpaces(
         search: String? = nil,
         author: String? = nil,
         filter: String? = nil,
         sort: String? = nil,
-        direction: SortDirection? = nil,
         limit: Int? = nil,
         full: Bool? = nil
-    ) async throws -> PaginatedResponse<Space> {
+    ) -> PaginatedSequence<Space> {
         var params: [String: Value] = [:]
 
         if let search { params["search"] = .string(search) }
         if let author { params["author"] = .string(author) }
         if let filter { params["filter"] = .string(filter) }
         if let sort { params["sort"] = .string(sort) }
-        if let direction { params["direction"] = .int(direction.rawValue) }
         if let limit { params["limit"] = .int(limit) }
         if let full { params["full"] = .bool(full) }
 
-        return try await httpClient.fetchPaginated(.get, "/api/spaces", params: params)
+        let capturedParams = params
+        return PaginatedSequence(
+            limit: limit,
+            firstPage: { [httpClient] in
+                try await httpClient.fetchPaginated(.get, "/api/spaces", params: capturedParams)
+            },
+            nextPage: { [httpClient] url in
+                try await httpClient.fetchPaginated(.get, url: url)
+            }
+        )
     }
 
     /// Gets information for a specific Space.
@@ -47,7 +58,7 @@ extension HubClient {
     ///   - full: Whether to fetch most space data.
     /// - Returns: Information about the space.
     /// - Throws: An error if the request fails or the response cannot be decoded.
-    public func getSpace(
+    func getSpace(
         _ id: Repo.ID,
         revision: String? = nil,
         full: Bool? = nil
@@ -75,7 +86,7 @@ extension HubClient {
     /// - Parameter id: The repository identifier.
     /// - Returns: Runtime information for the space.
     /// - Throws: An error if the request fails or the response cannot be decoded.
-    public func spaceRuntime(_ id: Repo.ID) async throws -> Space.Runtime {
+    func spaceRuntime(_ id: Repo.ID) async throws -> Space.Runtime {
         let url = httpClient.host
             .appending(path: "api")
             .appending(path: "spaces")
@@ -90,7 +101,7 @@ extension HubClient {
     /// - Parameter id: The repository identifier.
     /// - Returns: `true` if the operation was successful.
     /// - Throws: An error if the request fails.
-    public func sleepSpace(_ id: Repo.ID) async throws -> Bool {
+    func sleepSpace(_ id: Repo.ID) async throws -> Bool {
         let url = httpClient.host
             .appending(path: "api")
             .appending(path: "spaces")
@@ -107,7 +118,7 @@ extension HubClient {
     ///   - factory: Whether to perform a factory restart (rebuild from scratch).
     /// - Returns: `true` if the operation was successful.
     /// - Throws: An error if the request fails.
-    public func restartSpace(_ id: Repo.ID, factory: Bool = false) async throws -> Bool {
+    func restartSpace(_ id: Repo.ID, factory: Bool = false) async throws -> Bool {
         let url = httpClient.host
             .appending(path: "api")
             .appending(path: "spaces")
@@ -129,7 +140,7 @@ extension HubClient {
     ///   - id: The repository identifier.
     ///   - logType: The type of logs to stream ("build" or "run").
     /// - Returns: An async stream of log entries.
-    public func streamSpaceLogs(
+    func streamSpaceLogs(
         _ id: Repo.ID,
         logType: String
     ) -> AsyncThrowingStream<Space.LogEntry, Error> {
@@ -147,7 +158,7 @@ extension HubClient {
     ///
     /// - Parameter id: The repository identifier.
     /// - Returns: An async stream of metrics.
-    public func streamSpaceMetrics(_ id: Repo.ID) -> AsyncThrowingStream<Space.Metrics, Error> {
+    func streamSpaceMetrics(_ id: Repo.ID) -> AsyncThrowingStream<Space.Metrics, Error> {
         let url = httpClient.host
             .appending(path: "api")
             .appending(path: "spaces")
@@ -163,7 +174,7 @@ extension HubClient {
     ///   - id: The repository identifier.
     ///   - sessionUUID: Optional session UUID to filter events.
     /// - Returns: An async stream of events.
-    public func streamSpaceEvents(
+    func streamSpaceEvents(
         _ id: Repo.ID,
         sessionUUID: String? = nil
     ) -> AsyncThrowingStream<Space.Event, Error> {
@@ -191,7 +202,7 @@ extension HubClient {
     ///   - value: The secret value.
     /// - Returns: `true` if the secret was created/updated successfully.
     /// - Throws: An error if the request fails.
-    public func upsertSpaceSecret(
+    func upsertSpaceSecret(
         _ id: Repo.ID,
         key: String,
         description: String? = nil,
@@ -221,7 +232,7 @@ extension HubClient {
     ///   - key: The secret key name to delete.
     /// - Returns: `true` if the secret was deleted successfully.
     /// - Throws: An error if the request fails.
-    public func deleteSpaceSecret(
+    func deleteSpaceSecret(
         _ id: Repo.ID,
         key: String
     ) async throws -> Bool {
@@ -251,7 +262,7 @@ extension HubClient {
     ///   - value: The variable value.
     /// - Returns: `true` if the variable was created/updated successfully.
     /// - Throws: An error if the request fails.
-    public func upsertSpaceVariable(
+    func upsertSpaceVariable(
         _ id: Repo.ID,
         key: String,
         description: String? = nil,
@@ -281,7 +292,7 @@ extension HubClient {
     ///   - key: The variable key name to delete.
     /// - Returns: `true` if the variable was deleted successfully.
     /// - Throws: An error if the request fails.
-    public func deleteSpaceVariable(
+    func deleteSpaceVariable(
         _ id: Repo.ID,
         key: String
     ) async throws -> Bool {
@@ -309,7 +320,7 @@ extension HubClient {
     ///   - resourceGroupId: The resource group ID to set, or nil to unset.
     /// - Returns: Resource group response information.
     /// - Throws: An error if the request fails or the response cannot be decoded.
-    public func setSpaceResourceGroup(
+    func setSpaceResourceGroup(
         _ id: Repo.ID,
         resourceGroupId: String?
     ) async throws -> ResourceGroup {
@@ -332,7 +343,7 @@ extension HubClient {
     /// - Parameter id: The repository identifier.
     /// - Returns: `true` if the scan was initiated successfully.
     /// - Throws: An error if the request fails.
-    public func scanSpace(_ id: Repo.ID) async throws -> Bool {
+    func scanSpace(_ id: Repo.ID) async throws -> Bool {
         let url = httpClient.host
             .appending(path: "api")
             .appending(path: "spaces")
@@ -352,7 +363,7 @@ extension HubClient {
     ///   - message: An optional message for the tag.
     /// - Returns: `true` if the tag was created successfully.
     /// - Throws: An error if the request fails.
-    public func createSpaceTag(
+    func createSpaceTag(
         _ id: Repo.ID,
         revision: String,
         tag: String,
@@ -383,7 +394,7 @@ extension HubClient {
     ///   - message: The commit message for the squashed commit.
     /// - Returns: The new commit ID.
     /// - Throws: An error if the request fails or the response cannot be decoded.
-    public func superSquashSpace(
+    func superSquashSpace(
         _ id: Repo.ID,
         revision: String,
         message: String

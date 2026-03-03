@@ -75,12 +75,15 @@ import Testing
             }
 
             let client = createMockClient()
-            let result = try await client.listCollections()
+            var collections: [Collection] = []
+            for try await collection in client.listCollections() {
+                collections.append(collection)
+            }
 
-            #expect(result.items.count == 2)
-            #expect(result.items[0].slug == "user/my-collection")
-            #expect(result.items[0].title == "My Collection")
-            #expect(result.items[1].slug == "org/another-collection")
+            #expect(collections.count == 2)
+            #expect(collections[0].slug == "user/my-collection")
+            #expect(collections[0].title == "My Collection")
+            #expect(collections[1].slug == "org/another-collection")
         }
 
         @Test("List collections with owner filter", .mockURLSession)
@@ -116,10 +119,13 @@ import Testing
             }
 
             let client = createMockClient()
-            let result = try await client.listCollections(owner: "user")
+            var collections: [Collection] = []
+            for try await collection in client.listCollections(owner: "user") {
+                collections.append(collection)
+            }
 
-            #expect(result.items.count == 1)
-            #expect(result.items[0].owner == "user")
+            #expect(collections.count == 1)
+            #expect(collections[0].owner == "user")
         }
 
         @Test("Get specific collection", .mockURLSession)
