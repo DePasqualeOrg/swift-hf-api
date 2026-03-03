@@ -1,3 +1,5 @@
+// Copyright © Hugging Face SAS
+
 import Foundation
 
 /// A provider for determining the Hugging Face cache directory location.

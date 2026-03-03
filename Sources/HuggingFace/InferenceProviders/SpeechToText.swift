@@ -1,3 +1,5 @@
+// Copyright © Hugging Face SAS
+
 import Foundation
 
 /// Speech-to-text transcription task namespace.

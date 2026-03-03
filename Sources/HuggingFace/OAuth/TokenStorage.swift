@@ -1,3 +1,5 @@
+// Copyright © Hugging Face SAS
+
 import Foundation
 
 /// A cross-platform mechanism for storing and retrieving OAuth tokens.

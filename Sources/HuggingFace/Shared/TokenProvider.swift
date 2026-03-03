@@ -1,3 +1,5 @@
+// Copyright © Hugging Face SAS
+
 import Foundation
 
 /// A token provider for Hugging Face API authentication.

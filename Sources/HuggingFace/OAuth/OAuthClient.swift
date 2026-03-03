@@ -1,3 +1,5 @@
+// Copyright © Hugging Face SAS
+
 import Crypto
 import Foundation
 

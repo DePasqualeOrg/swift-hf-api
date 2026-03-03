@@ -1,3 +1,5 @@
+// Copyright © Hugging Face SAS
+
 import struct Foundation.Data
 import class Foundation.JSONDecoder
 import class Foundation.JSONEncoder
