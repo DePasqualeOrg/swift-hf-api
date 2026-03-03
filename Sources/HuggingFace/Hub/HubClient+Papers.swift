@@ -1,30 +1,45 @@
 // Copyright © Hugging Face SAS
+// Copyright © Anthony DePasquale
 
 import Foundation
 
 // MARK: - Papers API
 
-extension HubClient {
-    /// Lists papers from the Hub.
+public extension HubClient {
+    /// Lists papers from the Hub with automatic pagination.
+    ///
+    /// ```swift
+    /// for try await paper in client.listPapers(search: "diffusion") {
+    ///     print(paper.title)
+    /// }
+    /// ```
     ///
     /// - Parameters:
     ///   - search: Search term to filter papers.
     ///   - sort: Property to use when sorting (e.g., "trending", "updated").
-    ///   - limit: Limit the number of papers fetched.
-    /// - Returns: A paginated response containing paper information.
-    /// - Throws: An error if the request fails or the response cannot be decoded.
-    public func listPapers(
+    ///   - limit: Maximum total number of papers to return across all pages.
+    /// - Returns: An async sequence of papers.
+    func listPapers(
         search: String? = nil,
         sort: String? = nil,
         limit: Int? = nil
-    ) async throws -> PaginatedResponse<Paper> {
+    ) -> PaginatedSequence<Paper> {
         var params: [String: Value] = [:]
 
         if let search { params["search"] = .string(search) }
         if let sort { params["sort"] = .string(sort) }
         if let limit { params["limit"] = .int(limit) }
 
-        return try await httpClient.fetchPaginated(.get, "/api/papers", params: params)
+        let capturedParams = params
+        return PaginatedSequence(
+            limit: limit,
+            firstPage: { [httpClient] in
+                try await httpClient.fetchPaginated(.get, "/api/papers", params: capturedParams)
+            },
+            nextPage: { [httpClient] url in
+                try await httpClient.fetchPaginated(.get, url: url)
+            }
+        )
     }
 
     /// Gets information for a specific paper.
@@ -32,7 +47,7 @@ extension HubClient {
     /// - Parameter id: The paper's identifier (e.g., arXiv ID like "2103.00020").
     /// - Returns: Information about the paper.
     /// - Throws: An error if the request fails or the response cannot be decoded.
-    public func getPaper(_ id: String) async throws -> Paper {
+    func getPaper(_ id: String) async throws -> Paper {
         return try await httpClient.fetch(.get, "/api/papers/\(id)")
     }
 
@@ -48,7 +63,7 @@ extension HubClient {
     ///   - sort: Sort order ("publishedAt" or "trending"). If omitted, server default is "publishedAt".
     /// - Returns: An array of daily papers.
     /// - Throws: An error if the request fails or the response cannot be decoded.
-    public func listDailyPapers(
+    func listDailyPapers(
         page: Int? = nil,
         limit: Int? = nil,
         date: String? = nil,

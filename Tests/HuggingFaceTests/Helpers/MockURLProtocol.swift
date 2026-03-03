@@ -1,4 +1,5 @@
 // Copyright © Hugging Face SAS
+// Copyright © Anthony DePasquale
 
 import Foundation
 import Testing
@@ -8,6 +9,26 @@ import Testing
 #endif
 
 @testable import HuggingFace
+
+// MARK: - Thread-Safe Counter
+
+/// Thread-safe counter for testing request counts in Sendable closures.
+final class Counter: @unchecked Sendable {
+    private var _value: Int = 0
+    private let lock = NSLock()
+
+    var value: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return _value
+    }
+
+    func increment() {
+        lock.lock()
+        _value += 1
+        lock.unlock()
+    }
+}
 
 // MARK: - Request Handler Storage
 

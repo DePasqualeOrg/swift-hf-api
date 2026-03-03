@@ -1,4 +1,5 @@
 // Copyright © Hugging Face SAS
+// Copyright © Anthony DePasquale
 
 import Foundation
 
@@ -68,13 +69,16 @@ import Testing
             }
 
             let client = createMockClient()
-            let result = try await client.listOrganizations()
+            var orgs: [Organization] = []
+            for try await org in client.listOrganizations() {
+                orgs.append(org)
+            }
 
-            #expect(result.items.count == 2)
-            #expect(result.items[0].name == "huggingface")
-            #expect(result.items[0].fullName == "Hugging Face")
-            #expect(result.items[0].isEnterprise == true)
-            #expect(result.items[1].name == "testorg")
+            #expect(orgs.count == 2)
+            #expect(orgs[0].name == "huggingface")
+            #expect(orgs[0].fullName == "Hugging Face")
+            #expect(orgs[0].isEnterprise == true)
+            #expect(orgs[1].name == "testorg")
         }
 
         @Test("List organizations with search parameter", .mockURLSession)
@@ -106,10 +110,13 @@ import Testing
             }
 
             let client = createMockClient()
-            let result = try await client.listOrganizations(search: "huggingface")
+            var orgs: [Organization] = []
+            for try await org in client.listOrganizations(search: "huggingface") {
+                orgs.append(org)
+            }
 
-            #expect(result.items.count == 1)
-            #expect(result.items[0].name == "huggingface")
+            #expect(orgs.count == 1)
+            #expect(orgs[0].name == "huggingface")
         }
 
         @Test("Get specific organization", .mockURLSession)

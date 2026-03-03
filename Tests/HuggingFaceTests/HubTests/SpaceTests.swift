@@ -1,4 +1,5 @@
 // Copyright © Hugging Face SAS
+// Copyright © Anthony DePasquale
 
 import Foundation
 
@@ -64,12 +65,15 @@ import Testing
             }
 
             let client = createMockClient()
-            let result = try await client.listSpaces()
+            var spaces: [Space] = []
+            for try await space in client.listSpaces() {
+                spaces.append(space)
+            }
 
-            #expect(result.items.count == 2)
-            #expect(result.items[0].id == "user/demo-space")
-            #expect(result.items[0].author == "user")
-            #expect(result.items[1].id == "org/another-space")
+            #expect(spaces.count == 2)
+            #expect(spaces[0].id == "user/demo-space")
+            #expect(spaces[0].author == "user")
+            #expect(spaces[1].id == "org/another-space")
         }
 
         @Test("List spaces with search parameter", .mockURLSession)
@@ -100,10 +104,13 @@ import Testing
             }
 
             let client = createMockClient()
-            let result = try await client.listSpaces(search: "demo")
+            var spaces: [Space] = []
+            for try await space in client.listSpaces(search: "demo") {
+                spaces.append(space)
+            }
 
-            #expect(result.items.count == 1)
-            #expect(result.items[0].id == "user/demo-space")
+            #expect(spaces.count == 1)
+            #expect(spaces[0].id == "user/demo-space")
         }
 
         @Test("Get specific space", .mockURLSession)

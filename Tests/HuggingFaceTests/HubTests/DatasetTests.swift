@@ -1,4 +1,5 @@
 // Copyright © Hugging Face SAS
+// Copyright © Anthony DePasquale
 
 import Foundation
 
@@ -60,12 +61,15 @@ import Testing
             }
 
             let client = createMockClient()
-            let result = try await client.listDatasets()
+            var datasets: [Dataset] = []
+            for try await dataset in client.listDatasets() {
+                datasets.append(dataset)
+            }
 
-            #expect(result.items.count == 2)
-            #expect(result.items[0].id == "datasets/squad")
-            #expect(result.items[0].author == "datasets")
-            #expect(result.items[1].id == "stanfordnlp/imdb")
+            #expect(datasets.count == 2)
+            #expect(datasets[0].id == "datasets/squad")
+            #expect(datasets[0].author == "datasets")
+            #expect(datasets[1].id == "stanfordnlp/imdb")
         }
 
         @Test("List datasets with search parameter", .mockURLSession)
@@ -96,10 +100,13 @@ import Testing
             }
 
             let client = createMockClient()
-            let result = try await client.listDatasets(search: "squad")
+            var datasets: [Dataset] = []
+            for try await dataset in client.listDatasets(search: "squad") {
+                datasets.append(dataset)
+            }
 
-            #expect(result.items.count == 1)
-            #expect(result.items[0].id == "datasets/squad")
+            #expect(datasets.count == 1)
+            #expect(datasets[0].id == "datasets/squad")
         }
 
         @Test("Get specific dataset", .mockURLSession)
@@ -172,18 +179,17 @@ import Testing
 
         @Test("Get dataset tags", .mockURLSession)
         func testGetDatasetTags() async throws {
+            // Mock response matches real API format (no "tags" wrapper)
             let mockResponse = """
                 {
-                    "tags": {
-                        "task_categories": [
-                            {"id": "question-answering", "label": "Question Answering"},
-                            {"id": "text-classification", "label": "Text Classification"}
-                        ],
-                        "languages": [
-                            {"id": "en", "label": "English"},
-                            {"id": "fr", "label": "French"}
-                        ]
-                    }
+                    "task_categories": [
+                        {"id": "question-answering", "label": "Question Answering", "type": "task_categories"},
+                        {"id": "text-classification", "label": "Text Classification", "type": "task_categories"}
+                    ],
+                    "languages": [
+                        {"id": "en", "label": "English", "type": "languages"},
+                        {"id": "fr", "label": "French", "type": "languages"}
+                    ]
                 }
                 """
 

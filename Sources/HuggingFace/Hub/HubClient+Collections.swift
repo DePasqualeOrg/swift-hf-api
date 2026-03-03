@@ -1,25 +1,31 @@
 // Copyright © Hugging Face SAS
+// Copyright © Anthony DePasquale
 
 import Foundation
 
 // MARK: - Collections API
 
-extension HubClient {
-    /// Lists collections from the Hub.
+public extension HubClient {
+    /// Lists collections from the Hub with automatic pagination.
+    ///
+    /// ```swift
+    /// for try await collection in client.listCollections(owner: "huggingface") {
+    ///     print(collection.title)
+    /// }
+    /// ```
     ///
     /// - Parameters:
     ///   - owner: Filter collections by owner (username or organization).
     ///   - search: Search term to filter collections.
     ///   - sort: Property to use when sorting (e.g., "trending", "updated").
-    ///   - limit: Limit the number of collections fetched.
-    /// - Returns: A paginated response containing collection information.
-    /// - Throws: An error if the request fails or the response cannot be decoded.
-    public func listCollections(
+    ///   - limit: Maximum total number of collections to return across all pages.
+    /// - Returns: An async sequence of collections.
+    func listCollections(
         owner: String? = nil,
         search: String? = nil,
         sort: String? = nil,
         limit: Int? = nil
-    ) async throws -> PaginatedResponse<Collection> {
+    ) -> PaginatedSequence<Collection> {
         var params: [String: Value] = [:]
 
         if let owner { params["owner"] = .string(owner) }
@@ -27,7 +33,16 @@ extension HubClient {
         if let sort { params["sort"] = .string(sort) }
         if let limit { params["limit"] = .int(limit) }
 
-        return try await httpClient.fetchPaginated(.get, "/api/collections", params: params)
+        let capturedParams = params
+        return PaginatedSequence(
+            limit: limit,
+            firstPage: { [httpClient] in
+                try await httpClient.fetchPaginated(.get, "/api/collections", params: capturedParams)
+            },
+            nextPage: { [httpClient] url in
+                try await httpClient.fetchPaginated(.get, url: url)
+            }
+        )
     }
 
     /// Gets information for a specific collection.
@@ -35,7 +50,7 @@ extension HubClient {
     /// - Parameter slug: The collection slug (e.g., "owner/collection-name").
     /// - Returns: Information about the collection.
     /// - Throws: An error if the request fails or the response cannot be decoded.
-    public func getCollection(_ slug: String) async throws -> Collection {
+    func getCollection(_ slug: String) async throws -> Collection {
         return try await httpClient.fetch(.get, "/api/collections/\(slug)")
     }
 
@@ -51,7 +66,7 @@ extension HubClient {
     ///   - note: Optional note about the item (max 500 characters).
     /// - Returns: The updated collection.
     /// - Throws: An error if the request fails or the response cannot be decoded.
-    public func addCollectionItem(
+    func addCollectionItem(
         namespace: String,
         slug: String,
         id: String,
@@ -80,7 +95,7 @@ extension HubClient {
     ///   - actions: Array of batch update actions.
     /// - Returns: `true` if the batch update was successful.
     /// - Throws: An error if the request fails.
-    public func batchUpdateCollectionItems(
+    func batchUpdateCollectionItems(
         namespace: String,
         slug: String,
         id: String,
@@ -109,7 +124,7 @@ extension HubClient {
     ///   - itemId: The ID of the item to delete.
     /// - Returns: `true` if the item was deleted successfully.
     /// - Throws: An error if the request fails.
-    public func deleteCollectionItem(
+    func deleteCollectionItem(
         namespace: String,
         slug: String,
         id: String,

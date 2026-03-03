@@ -1,4 +1,5 @@
 // Copyright © Hugging Face SAS
+// Copyright © Anthony DePasquale
 
 import Foundation
 
@@ -60,15 +61,18 @@ import Testing
             }
 
             let client = createMockClient()
-            let result = try await client.listPapers()
+            var papers: [Paper] = []
+            for try await paper in client.listPapers() {
+                papers.append(paper)
+            }
 
-            #expect(result.items.count == 2)
-            #expect(result.items[0].id == "2103.00020")
+            #expect(papers.count == 2)
+            #expect(papers[0].id == "2103.00020")
             #expect(
-                result.items[0].title
+                papers[0].title
                     == "Learning Transferable Visual Models From Natural Language Supervision"
             )
-            #expect(result.items[1].id == "2005.14165")
+            #expect(papers[1].id == "2005.14165")
         }
 
         @Test("List papers with search parameter", .mockURLSession)
@@ -99,10 +103,13 @@ import Testing
             }
 
             let client = createMockClient()
-            let result = try await client.listPapers(search: "CLIP")
+            var papers: [Paper] = []
+            for try await paper in client.listPapers(search: "CLIP") {
+                papers.append(paper)
+            }
 
-            #expect(result.items.count == 1)
-            #expect(result.items[0].id == "2103.00020")
+            #expect(papers.count == 1)
+            #expect(papers[0].id == "2103.00020")
         }
 
         @Test("List papers with sort parameter", .mockURLSession)
@@ -132,9 +139,12 @@ import Testing
             }
 
             let client = createMockClient()
-            let result = try await client.listPapers(sort: "trending")
+            var papers: [Paper] = []
+            for try await paper in client.listPapers(sort: "trending") {
+                papers.append(paper)
+            }
 
-            #expect(result.items.count == 1)
+            #expect(papers.count == 1)
         }
 
         @Test("List papers with limit parameter", .mockURLSession)
@@ -164,9 +174,12 @@ import Testing
             }
 
             let client = createMockClient()
-            let result = try await client.listPapers(limit: 1)
+            var papers: [Paper] = []
+            for try await paper in client.listPapers(limit: 1) {
+                papers.append(paper)
+            }
 
-            #expect(result.items.count == 1)
+            #expect(papers.count == 1)
         }
 
         @Test("Get specific paper", .mockURLSession)
