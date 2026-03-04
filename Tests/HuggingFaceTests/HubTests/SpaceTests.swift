@@ -126,12 +126,12 @@ import Testing
             await MockURLProtocol.setHandler { request in
                 #expect(request.url?.path == "/api/spaces")
 
-                let queryItems = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems
-                let query = Dictionary(uniqueKeysWithValues: (queryItems ?? []).map { ($0.name, $0.value ?? "") })
+                let queryItems = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems ?? []
 
-                #expect(query["datasets"]?.contains("datasets/squad") == true)
-                #expect(query["models"]?.contains("google/bert-base-uncased") == true)
-                #expect(query["linked"] == "true")
+                // datasets and models are sent as repeated query params
+                #expect(queryItems.contains { $0.name == "datasets" && $0.value == "datasets/squad" })
+                #expect(queryItems.contains { $0.name == "models" && $0.value == "google/bert-base-uncased" })
+                #expect(queryItems.contains { $0.name == "linked" && $0.value == "true" })
 
                 let response = HTTPURLResponse(
                     url: request.url!,

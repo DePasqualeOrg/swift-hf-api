@@ -11,6 +11,15 @@ public extension HubClient {
         case warm
     }
 
+    /// Sort fields for model listing.
+    enum ModelSortField: String, Hashable, CaseIterable, Sendable {
+        case createdAt
+        case downloads
+        case lastModified
+        case likes
+        case trendingScore
+    }
+
     /// Expandable model fields for Hub API responses.
     enum ModelExpandField: String, Hashable, CaseIterable, Sendable {
         case author
@@ -62,60 +71,71 @@ public extension HubClient {
     /// ```
     ///
     /// - Parameters:
-    ///   - search: Filter based on substrings for repos and their usernames.
+    ///   - filter: Filter based on tags (e.g., `["text-classification"]`).
     ///   - author: Filter models by an author or organization.
-    ///   - filter: Filter based on tags (e.g., "text-classification").
     ///   - apps: Filter by app support values.
     ///   - gated: Filter by gated status.
     ///   - inference: Filter by inference availability mode.
     ///   - inferenceProvider: Filter by inference provider values.
-    ///   - modelName: Filter by full or partial model name.
+    ///   - modelName: Filter by full or partial model name (combined with `search`).
     ///   - trainedDataset: Filter by trained dataset tags.
+    ///   - search: Filter based on substrings for repos and their usernames (combined with `modelName`).
     ///   - pipelineTag: Filter by pipeline tag.
-    ///   - sort: Property to use when sorting (e.g., "downloads", "author").
-    ///   - direction: Direction in which to sort.
+    ///   - sort: Property to use when sorting.
     ///   - limit: Maximum total number of models to return across all pages.
-    ///   - full: Whether to fetch most model data, such as all tags, the files, etc.
     ///   - expand: Fields to include in the response.
+    ///   - full: Whether to fetch most model data, such as all tags, the files, etc.
     ///   - cardData: Whether to include model card metadata.
     ///   - fetchConfig: Whether to fetch the model configs as well (not included in `full` due to size).
     /// - Returns: An async sequence of models.
     func listModels(
-        search: String? = nil,
+        filter: [String]? = nil,
         author: String? = nil,
-        filter: String? = nil,
-        sort: String? = nil,
-        direction: SortDirection? = nil,
-        limit: Int? = nil,
-        full: Bool? = nil,
         apps: CommaSeparatedList<String>? = nil,
         gated: Bool? = nil,
         inference: Extensible<ModelInference>? = nil,
         inferenceProvider: CommaSeparatedList<String>? = nil,
         modelName: String? = nil,
         trainedDataset: CommaSeparatedList<String>? = nil,
+        search: String? = nil,
         pipelineTag: String? = nil,
+        sort: ModelSortField? = nil,
+        limit: Int? = nil,
         expand: ExtensibleCommaSeparatedList<ModelExpandField>? = nil,
+        full: Bool? = nil,
         cardData: Bool? = nil,
         fetchConfig: Bool? = nil
     ) -> PaginatedSequence<Model> {
         var params: [String: Value] = [:]
 
-        if let search { params["search"] = .string(search) }
+        // Build the filter list, matching Python's huggingface_hub behavior
+        var filterList: [Value] = []
+        if let filter {
+            for f in filter { filterList.append(.string(f)) }
+        }
+        if let trainedDataset {
+            for dataset in trainedDataset {
+                let value = dataset.hasPrefix("dataset:") ? dataset : "dataset:\(dataset)"
+                filterList.append(.string(value))
+            }
+        }
+        if !filterList.isEmpty { params["filter"] = .array(filterList) }
+
         if let author { params["author"] = .string(author) }
-        if let filter { params["filter"] = .string(filter) }
-        if let apps { params["apps"] = .string(apps.rawValue) }
+        if let apps { params["apps"] = .array(apps.map { .string($0) }) }
         if let gated { params["gated"] = .bool(gated) }
         if let inference { params["inference"] = .string(inference.rawValue) }
-        if let inferenceProvider { params["inference_provider"] = .string(inferenceProvider.rawValue) }
-        if let modelName { params["model_name"] = .string(modelName) }
-        if let trainedDataset { params["trained_dataset"] = .string(trainedDataset.rawValue) }
+        if let inferenceProvider { params["inference_provider"] = .array(inferenceProvider.map { .string($0) }) }
         if let pipelineTag { params["pipeline_tag"] = .string(pipelineTag) }
-        if let sort { params["sort"] = .string(sort) }
-        if let direction { params["direction"] = .int(direction.rawValue) }
+        // modelName and search are combined into a single search list
+        var searchList: [Value] = []
+        if let modelName { searchList.append(.string(modelName)) }
+        if let search { searchList.append(.string(search)) }
+        if !searchList.isEmpty { params["search"] = .array(searchList) }
+        if let sort { params["sort"] = .string(sort.rawValue) }
         if let limit { params["limit"] = .int(limit) }
         if let full { params["full"] = .bool(full) }
-        if let expand { params["expand"] = .string(expand.rawValue) }
+        if let expand { params["expand"] = .array(expand.map { .string($0.rawValue) }) }
         if let cardData { params["cardData"] = .bool(cardData) }
         if let fetchConfig { params["config"] = .bool(fetchConfig) }
 

@@ -6,6 +6,14 @@ import Foundation
 // MARK: - Spaces API
 
 public extension HubClient {
+    /// Sort fields for space listing.
+    enum SpaceSortField: String, Hashable, CaseIterable, Sendable {
+        case createdAt
+        case lastModified
+        case likes
+        case trendingScore
+    }
+
     /// Expandable space fields for Hub API responses.
     enum SpaceExpandField: String, Hashable, CaseIterable, Sendable {
         case author
@@ -37,44 +45,41 @@ public extension HubClient {
     /// ```
     ///
     /// - Parameters:
-    ///   - search: Filter based on substrings for repos and their usernames.
-    ///   - author: Filter spaces by an author or organization.
     ///   - filter: Filter based on tags.
+    ///   - author: Filter spaces by an author or organization.
+    ///   - search: Filter based on substrings for repos and their usernames.
     ///   - datasets: Filter by linked dataset identifiers.
     ///   - models: Filter by linked model identifiers.
     ///   - linked: Filter to spaces linked to either models or datasets.
-    ///   - sort: Property to use when sorting (e.g., "likes", "author").
-    ///   - direction: Direction in which to sort.
+    ///   - sort: Property to use when sorting.
     ///   - limit: Maximum total number of spaces to return across all pages.
-    ///   - full: Whether to fetch most space data, such as all tags, the files, etc.
     ///   - expand: Fields to include in the response.
+    ///   - full: Whether to fetch most space data, such as all tags, the files, etc.
     /// - Returns: An async sequence of spaces.
     func listSpaces(
-        search: String? = nil,
+        filter: [String]? = nil,
         author: String? = nil,
-        filter: String? = nil,
-        sort: String? = nil,
-        direction: SortDirection? = nil,
-        limit: Int? = nil,
-        full: Bool? = nil,
+        search: String? = nil,
         datasets: CommaSeparatedList<String>? = nil,
         models: CommaSeparatedList<String>? = nil,
         linked: Bool? = nil,
-        expand: ExtensibleCommaSeparatedList<SpaceExpandField>? = nil
+        sort: SpaceSortField? = nil,
+        limit: Int? = nil,
+        expand: ExtensibleCommaSeparatedList<SpaceExpandField>? = nil,
+        full: Bool? = nil
     ) -> PaginatedSequence<Space> {
         var params: [String: Value] = [:]
 
-        if let search { params["search"] = .string(search) }
+        if let filter { params["filter"] = .array(filter.map { .string($0) }) }
         if let author { params["author"] = .string(author) }
-        if let filter { params["filter"] = .string(filter) }
-        if let datasets { params["datasets"] = .string(datasets.rawValue) }
-        if let models { params["models"] = .string(models.rawValue) }
+        if let search { params["search"] = .string(search) }
+        if let datasets { params["datasets"] = .array(datasets.map { .string($0) }) }
+        if let models { params["models"] = .array(models.map { .string($0) }) }
         if let linked { params["linked"] = .bool(linked) }
-        if let sort { params["sort"] = .string(sort) }
-        if let direction { params["direction"] = .int(direction.rawValue) }
+        if let sort { params["sort"] = .string(sort.rawValue) }
         if let limit { params["limit"] = .int(limit) }
+        if let expand { params["expand"] = .array(expand.map { .string($0.rawValue) }) }
         if let full { params["full"] = .bool(full) }
-        if let expand { params["expand"] = .string(expand.rawValue) }
 
         let capturedParams = params
         return PaginatedSequence(

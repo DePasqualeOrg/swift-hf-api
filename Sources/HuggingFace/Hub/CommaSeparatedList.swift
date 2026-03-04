@@ -69,6 +69,14 @@ public struct CommaSeparatedList<Value: Hashable & Sendable>: Hashable, Sendable
     }
 }
 
+// MARK: - Sequence
+
+extension CommaSeparatedList: Sequence {
+    public func makeIterator() -> Set<Value>.Iterator {
+        storage.makeIterator()
+    }
+}
+
 // MARK: - SetAlgebra
 
 extension CommaSeparatedList: SetAlgebra {

@@ -462,7 +462,13 @@ final class HTTPClient: @unchecked Sendable {
             if let params {
                 var queryItems: [URLQueryItem] = []
                 for (key, value) in params {
-                    queryItems.append(URLQueryItem(name: key, value: value.description))
+                    if case .array(let items) = value {
+                        for item in items {
+                            queryItems.append(URLQueryItem(name: key, value: item.description))
+                        }
+                    } else {
+                        queryItems.append(URLQueryItem(name: key, value: value.description))
+                    }
                 }
                 urlComponents?.queryItems = queryItems
             }

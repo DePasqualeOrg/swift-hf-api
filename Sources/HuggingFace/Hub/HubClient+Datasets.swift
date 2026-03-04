@@ -6,6 +6,15 @@ import Foundation
 // MARK: - Datasets API
 
 public extension HubClient {
+    /// Sort fields for dataset listing.
+    enum DatasetSortField: String, Hashable, CaseIterable, Sendable {
+        case createdAt
+        case downloads
+        case lastModified
+        case likes
+        case trendingScore
+    }
+
     /// Expandable dataset fields for Hub API responses.
     enum DatasetExpandField: String, Hashable, CaseIterable, Sendable {
         case author
@@ -38,11 +47,10 @@ public extension HubClient {
     /// ```
     ///
     /// - Parameters:
-    ///   - search: Filter based on substrings for repos and their usernames.
+    ///   - filter: Filter based on tags (e.g., `["task_categories:text-classification"]`).
     ///   - author: Filter datasets by an author or organization.
-    ///   - filter: Filter based on tags (e.g., "task_categories:text-classification").
     ///   - benchmark: Filter by benchmark value.
-    ///   - datasetName: Filter by full or partial dataset name.
+    ///   - datasetName: Filter by full or partial dataset name (combined with `search`).
     ///   - gated: Filter by gated status.
     ///   - languageCreators: Filter by language creator categories.
     ///   - language: Filter by languages.
@@ -50,20 +58,15 @@ public extension HubClient {
     ///   - sizeCategories: Filter by dataset size categories.
     ///   - taskCategories: Filter by task categories.
     ///   - taskIds: Filter by task identifiers.
-    ///   - sort: Property to use when sorting (e.g., "downloads", "author").
-    ///   - direction: Direction in which to sort.
+    ///   - search: Filter based on substrings for repos and their usernames (combined with `datasetName`).
+    ///   - sort: Property to use when sorting.
     ///   - limit: Maximum total number of datasets to return across all pages.
-    ///   - full: Whether to fetch most dataset data, such as all tags, the files, etc.
     ///   - expand: Fields to include in the response.
+    ///   - full: Whether to fetch most dataset data, such as all tags, the files, etc.
     /// - Returns: An async sequence of datasets.
     func listDatasets(
-        search: String? = nil,
+        filter: [String]? = nil,
         author: String? = nil,
-        filter: String? = nil,
-        sort: String? = nil,
-        direction: SortDirection? = nil,
-        limit: Int? = nil,
-        full: Bool? = nil,
         benchmark: String? = nil,
         datasetName: String? = nil,
         gated: Bool? = nil,
@@ -73,27 +76,48 @@ public extension HubClient {
         sizeCategories: CommaSeparatedList<String>? = nil,
         taskCategories: CommaSeparatedList<String>? = nil,
         taskIds: CommaSeparatedList<String>? = nil,
-        expand: ExtensibleCommaSeparatedList<DatasetExpandField>? = nil
+        search: String? = nil,
+        sort: DatasetSortField? = nil,
+        limit: Int? = nil,
+        expand: ExtensibleCommaSeparatedList<DatasetExpandField>? = nil,
+        full: Bool? = nil
     ) -> PaginatedSequence<Dataset> {
         var params: [String: Value] = [:]
 
-        if let search { params["search"] = .string(search) }
+        // Build the filter list, matching Python's huggingface_hub behavior
+        var filterList: [Value] = []
+        if let filter {
+            for f in filter { filterList.append(.string(f)) }
+        }
+        for (key, values) in [
+            ("language_creators", languageCreators),
+            ("language", language),
+            ("multilinguality", multilinguality),
+            ("size_categories", sizeCategories),
+            ("task_categories", taskCategories),
+            ("task_ids", taskIds),
+        ] as [(String, CommaSeparatedList<String>?)] {
+            if let values {
+                for value in values {
+                    let prefixed = value.hasPrefix("\(key):") ? value : "\(key):\(value)"
+                    filterList.append(.string(prefixed))
+                }
+            }
+        }
+        if let benchmark { filterList.append(.string("benchmark:\(benchmark)")) }
+        if !filterList.isEmpty { params["filter"] = .array(filterList) }
+
         if let author { params["author"] = .string(author) }
-        if let filter { params["filter"] = .string(filter) }
-        if let benchmark { params["benchmark"] = .string(benchmark) }
-        if let datasetName { params["dataset_name"] = .string(datasetName) }
         if let gated { params["gated"] = .bool(gated) }
-        if let languageCreators { params["language_creators"] = .string(languageCreators.rawValue) }
-        if let language { params["language"] = .string(language.rawValue) }
-        if let multilinguality { params["multilinguality"] = .string(multilinguality.rawValue) }
-        if let sizeCategories { params["size_categories"] = .string(sizeCategories.rawValue) }
-        if let taskCategories { params["task_categories"] = .string(taskCategories.rawValue) }
-        if let taskIds { params["task_ids"] = .string(taskIds.rawValue) }
-        if let sort { params["sort"] = .string(sort) }
-        if let direction { params["direction"] = .int(direction.rawValue) }
+        // datasetName and search are combined into a single search list
+        var searchList: [Value] = []
+        if let datasetName { searchList.append(.string(datasetName)) }
+        if let search { searchList.append(.string(search)) }
+        if !searchList.isEmpty { params["search"] = .array(searchList) }
+        if let sort { params["sort"] = .string(sort.rawValue) }
         if let limit { params["limit"] = .int(limit) }
+        if let expand { params["expand"] = .array(expand.map { .string($0.rawValue) }) }
         if let full { params["full"] = .bool(full) }
-        if let expand { params["expand"] = .string(expand.rawValue) }
 
         let capturedParams = params
         return PaginatedSequence(

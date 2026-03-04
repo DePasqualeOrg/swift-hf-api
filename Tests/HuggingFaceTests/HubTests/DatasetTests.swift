@@ -122,12 +122,15 @@ import Testing
             await MockURLProtocol.setHandler { request in
                 #expect(request.url?.path == "/api/datasets")
 
-                let queryItems = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems
-                let query = Dictionary(uniqueKeysWithValues: (queryItems ?? []).map { ($0.name, $0.value ?? "") })
+                let queryItems = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems ?? []
 
-                #expect(query["dataset_name"] == "squad")
-                #expect(query["language_creators"]?.contains("crowdsourced") == true)
-                #expect(query["size_categories"]?.contains("10K<n<100K") == true)
+                // datasetName is folded into search
+                #expect(queryItems.contains { $0.name == "search" && $0.value == "squad" })
+
+                // languageCreators and sizeCategories are encoded as repeated filter params
+                let filterValues = queryItems.filter { $0.name == "filter" }.compactMap(\.value)
+                #expect(filterValues.contains("language_creators:crowdsourced"))
+                #expect(filterValues.contains("size_categories:10K<n<100K"))
 
                 let response = HTTPURLResponse(
                     url: request.url!,

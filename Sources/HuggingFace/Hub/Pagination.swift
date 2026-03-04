@@ -7,17 +7,6 @@ import Foundation
     import FoundationNetworking
 #endif
 
-// MARK: - Sort Direction
-
-/// Direction in which to sort API results.
-public enum SortDirection: Int, Hashable, Sendable {
-    /// Ascending order.
-    case ascending = 1
-
-    /// Descending order.
-    case descending = -1
-}
-
 // MARK: - Paginated Sequence
 
 /// An async sequence that automatically paginates through API results.
