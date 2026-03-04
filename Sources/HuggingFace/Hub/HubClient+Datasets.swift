@@ -55,7 +55,6 @@ public extension HubClient {
     ///   - limit: Maximum total number of datasets to return across all pages.
     ///   - full: Whether to fetch most dataset data, such as all tags, the files, etc.
     ///   - expand: Fields to include in the response.
-    ///   - config: Whether to also fetch the repo config.
     /// - Returns: An async sequence of datasets.
     func listDatasets(
         search: String? = nil,
@@ -65,7 +64,6 @@ public extension HubClient {
         direction: SortDirection? = nil,
         limit: Int? = nil,
         full: Bool? = nil,
-        config: Bool? = nil,
         benchmark: String? = nil,
         datasetName: String? = nil,
         gated: Bool? = nil,
@@ -96,7 +94,6 @@ public extension HubClient {
         if let limit { params["limit"] = .int(limit) }
         if let full { params["full"] = .bool(full) }
         if let expand { params["expand"] = .string(expand.rawValue) }
-        if let config { params["config"] = .bool(config) }
 
         let capturedParams = params
         return PaginatedSequence(

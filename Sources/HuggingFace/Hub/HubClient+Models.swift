@@ -78,8 +78,7 @@ public extension HubClient {
     ///   - full: Whether to fetch most model data, such as all tags, the files, etc.
     ///   - expand: Fields to include in the response.
     ///   - cardData: Whether to include model card metadata.
-    ///   - config: Whether to also fetch the repo config.
-    ///   - fetchConfig: Whether to force inclusion of the model config.
+    ///   - fetchConfig: Whether to fetch the model configs as well (not included in `full` due to size).
     /// - Returns: An async sequence of models.
     func listModels(
         search: String? = nil,
@@ -89,7 +88,6 @@ public extension HubClient {
         direction: SortDirection? = nil,
         limit: Int? = nil,
         full: Bool? = nil,
-        config: Bool? = nil,
         apps: CommaSeparatedList<String>? = nil,
         gated: Bool? = nil,
         inference: Extensible<ModelInference>? = nil,
@@ -119,8 +117,7 @@ public extension HubClient {
         if let full { params["full"] = .bool(full) }
         if let expand { params["expand"] = .string(expand.rawValue) }
         if let cardData { params["cardData"] = .bool(cardData) }
-        if let config { params["config"] = .bool(config) }
-        if let fetchConfig, fetchConfig { params["config"] = .bool(true) }
+        if let fetchConfig { params["config"] = .bool(fetchConfig) }
 
         let capturedParams = params
         return PaginatedSequence(
