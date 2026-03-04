@@ -6,6 +6,36 @@ import Foundation
 // MARK: - Spaces API
 
 public extension HubClient {
+    /// Sort fields for space listing.
+    enum SpaceSortField: String, Hashable, CaseIterable, Sendable {
+        case createdAt
+        case lastModified
+        case likes
+        case trendingScore
+    }
+
+    /// Expandable space fields for Hub API responses.
+    enum SpaceExpandField: String, Hashable, CaseIterable, Sendable {
+        case author
+        case cardData
+        case createdAt
+        case datasets
+        case disabled
+        case lastModified
+        case likes
+        case models
+        case `private`
+        case runtime
+        case sdk
+        case siblings
+        case sha
+        case subdomain
+        case tags
+        case trendingScore
+        case usedStorage
+        case resourceGroup
+    }
+
     /// Lists Spaces from the Hub with automatic pagination.
     ///
     /// ```swift
@@ -15,28 +45,40 @@ public extension HubClient {
     /// ```
     ///
     /// - Parameters:
-    ///   - search: Filter based on substrings for repos and their usernames.
-    ///   - author: Filter spaces by an author or organization.
     ///   - filter: Filter based on tags.
-    ///   - sort: Property to use when sorting (e.g., "likes", "author").
+    ///   - author: Filter spaces by an author or organization.
+    ///   - search: Filter based on substrings for repos and their usernames.
+    ///   - datasets: Filter by linked dataset identifiers.
+    ///   - models: Filter by linked model identifiers.
+    ///   - linked: Filter to spaces linked to either models or datasets.
+    ///   - sort: Property to use when sorting.
     ///   - limit: Maximum total number of spaces to return across all pages.
+    ///   - expand: Fields to include in the response.
     ///   - full: Whether to fetch most space data, such as all tags, the files, etc.
     /// - Returns: An async sequence of spaces.
     func listSpaces(
-        search: String? = nil,
+        filter: [String]? = nil,
         author: String? = nil,
-        filter: String? = nil,
-        sort: String? = nil,
+        search: String? = nil,
+        datasets: CommaSeparatedList<String>? = nil,
+        models: CommaSeparatedList<String>? = nil,
+        linked: Bool? = nil,
+        sort: SpaceSortField? = nil,
         limit: Int? = nil,
+        expand: ExtensibleCommaSeparatedList<SpaceExpandField>? = nil,
         full: Bool? = nil
     ) -> PaginatedSequence<Space> {
         var params: [String: Value] = [:]
 
-        if let search { params["search"] = .string(search) }
+        if let filter { params["filter"] = .array(filter.map { .string($0) }) }
         if let author { params["author"] = .string(author) }
-        if let filter { params["filter"] = .string(filter) }
-        if let sort { params["sort"] = .string(sort) }
+        if let search { params["search"] = .string(search) }
+        if let datasets { params["datasets"] = .array(datasets.map { .string($0) }) }
+        if let models { params["models"] = .array(models.map { .string($0) }) }
+        if let linked { params["linked"] = .bool(linked) }
+        if let sort { params["sort"] = .string(sort.rawValue) }
         if let limit { params["limit"] = .int(limit) }
+        if let expand { params["expand"] = .array(expand.map { .string($0.rawValue) }) }
         if let full { params["full"] = .bool(full) }
 
         let capturedParams = params
@@ -56,14 +98,14 @@ public extension HubClient {
     /// - Parameters:
     ///   - id: The repository identifier (e.g., "user/space-name").
     ///   - revision: The git revision (branch, tag, or commit hash). If nil, uses the repo's default branch (usually "main").
-    ///   - full: Whether to fetch most space data.
-    ///   - filesMetadata: Whether to retrieve metadata for files (size, LFS metadata, etc).
+    ///   - expand: Fields to include in the response.
+    ///   - filesMetadata: Whether to include file metadata such as blob information.
     /// - Returns: Information about the space.
     /// - Throws: An error if the request fails or the response cannot be decoded.
     func getSpace(
         _ id: Repo.ID,
         revision: String? = nil,
-        full: Bool? = nil,
+        expand: ExtensibleCommaSeparatedList<SpaceExpandField>? = nil,
         filesMetadata: Bool? = nil
     ) async throws -> Space {
         var url = httpClient.host
@@ -79,8 +121,8 @@ public extension HubClient {
         }
 
         var params: [String: Value] = [:]
-        if let full { params["full"] = .bool(full) }
-        if let filesMetadata { params["blobs"] = .bool(filesMetadata) }
+        if let expand { params["expand"] = .string(expand.rawValue) }
+        if let filesMetadata, filesMetadata { params["blobs"] = .bool(true) }
 
         return try await httpClient.fetch(.get, url: url, params: params)
     }

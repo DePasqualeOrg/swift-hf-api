@@ -35,7 +35,10 @@ private func makeProgressStream() -> (
     return (stream, StreamYielder(continuation))
 }
 
-#if swift(>=6.1)
+// Snapshot download tests are disabled on Linux because FoundationNetworking's
+// libcurl backend crashes under concurrent HTTP requests, even when test suites
+// run serially (the downloads within each test are concurrent).
+#if swift(>=6.1) && !canImport(FoundationNetworking)
     @Suite("Snapshot Download Tests", .serialized)
     struct SnapshotDownloadTests {
         static let cacheDirectory: URL = {

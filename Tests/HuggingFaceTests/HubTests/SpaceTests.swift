@@ -113,6 +113,49 @@ import Testing
             #expect(spaces[0].id == "user/demo-space")
         }
 
+        @Test("List spaces with additional query parameters", .mockURLSession)
+        func testListSpacesWithAdditionalParameters() async throws {
+            let mockResponse = """
+                [
+                    {
+                        "id": "user/demo-space"
+                    }
+                ]
+                """
+
+            await MockURLProtocol.setHandler { request in
+                #expect(request.url?.path == "/api/spaces")
+
+                let queryItems = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems ?? []
+
+                // datasets and models are sent as repeated query params
+                #expect(queryItems.contains { $0.name == "datasets" && $0.value == "datasets/squad" })
+                #expect(queryItems.contains { $0.name == "models" && $0.value == "google/bert-base-uncased" })
+                #expect(queryItems.contains { $0.name == "linked" && $0.value == "true" })
+
+                let response = HTTPURLResponse(
+                    url: request.url!,
+                    statusCode: 200,
+                    httpVersion: "HTTP/1.1",
+                    headerFields: ["Content-Type": "application/json"]
+                )!
+
+                return (response, Data(mockResponse.utf8))
+            }
+
+            let client = createMockClient()
+            var spaces: [Space] = []
+            for try await space in client.listSpaces(
+                datasets: ["datasets/squad"],
+                models: ["google/bert-base-uncased"],
+                linked: true
+            ) {
+                spaces.append(space)
+            }
+
+            #expect(spaces.count == 1)
+        }
+
         @Test("Get specific space", .mockURLSession)
         func testGetSpace() async throws {
             let mockResponse = """

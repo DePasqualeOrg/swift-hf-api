@@ -109,6 +109,52 @@ import Testing
             #expect(datasets[0].id == "datasets/squad")
         }
 
+        @Test("List datasets with additional query parameters", .mockURLSession)
+        func testListDatasetsWithAdditionalParameters() async throws {
+            let mockResponse = """
+                [
+                    {
+                        "id": "datasets/squad"
+                    }
+                ]
+                """
+
+            await MockURLProtocol.setHandler { request in
+                #expect(request.url?.path == "/api/datasets")
+
+                let queryItems = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems ?? []
+
+                // datasetName is folded into search
+                #expect(queryItems.contains { $0.name == "search" && $0.value == "squad" })
+
+                // languageCreators and sizeCategories are encoded as repeated filter params
+                let filterValues = queryItems.filter { $0.name == "filter" }.compactMap(\.value)
+                #expect(filterValues.contains("language_creators:crowdsourced"))
+                #expect(filterValues.contains("size_categories:10K<n<100K"))
+
+                let response = HTTPURLResponse(
+                    url: request.url!,
+                    statusCode: 200,
+                    httpVersion: "HTTP/1.1",
+                    headerFields: ["Content-Type": "application/json"]
+                )!
+
+                return (response, Data(mockResponse.utf8))
+            }
+
+            let client = createMockClient()
+            var datasets: [Dataset] = []
+            for try await dataset in client.listDatasets(
+                datasetName: "squad",
+                languageCreators: ["crowdsourced"],
+                sizeCategories: ["10K<n<100K"]
+            ) {
+                datasets.append(dataset)
+            }
+
+            #expect(datasets.count == 1)
+        }
+
         @Test("Get specific dataset", .mockURLSession)
         func testGetDataset() async throws {
             let mockResponse = """

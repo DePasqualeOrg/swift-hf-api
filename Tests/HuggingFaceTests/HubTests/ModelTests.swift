@@ -242,6 +242,56 @@ import Testing
             #expect(models[1].id == "google/bert-base-uncased")
         }
 
+        @Test("List models with additional query parameters", .mockURLSession)
+        func testListModelsWithAdditionalParameters() async throws {
+            let mockResponse = """
+                [
+                    {
+                        "id": "google/bert-base-uncased"
+                    }
+                ]
+                """
+
+            await MockURLProtocol.setHandler { request in
+                #expect(request.url?.path == "/api/models")
+
+                let queryItems = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems ?? []
+
+                // apps is sent as repeated query params
+                let appsValues = queryItems.filter { $0.name == "apps" }.compactMap(\.value)
+                #expect(appsValues.contains("text-generation-inference"))
+                #expect(queryItems.contains { $0.name == "gated" && $0.value == "true" })
+                // modelName is folded into search
+                #expect(queryItems.contains { $0.name == "search" && $0.value == "bert-base" })
+                // inferenceProvider is sent as repeated query params
+                let providerValues = queryItems.filter { $0.name == "inference_provider" }.compactMap(\.value)
+                #expect(providerValues.contains("hf-inference"))
+                #expect(providerValues.contains("fal-ai"))
+
+                let response = HTTPURLResponse(
+                    url: request.url!,
+                    statusCode: 200,
+                    httpVersion: "HTTP/1.1",
+                    headerFields: ["Content-Type": "application/json"]
+                )!
+
+                return (response, Data(mockResponse.utf8))
+            }
+
+            let client = createMockClient()
+            var models: [Model] = []
+            for try await model in client.listModels(
+                apps: ["text-generation-inference"],
+                gated: true,
+                inferenceProvider: ["hf-inference", "fal-ai"],
+                modelName: "bert-base"
+            ) {
+                models.append(model)
+            }
+
+            #expect(models.count == 1)
+        }
+
         @Test("Get specific model", .mockURLSession)
         func testGetModel() async throws {
             let mockResponse = """
@@ -550,7 +600,7 @@ import Testing
         @Test("List models sorted by downloads")
         func listModelsSortByDownloads() async throws {
             var count = 0
-            for try await model in client.listModels(sort: "downloads", limit: 10) {
+            for try await model in client.listModels(sort: .downloads, limit: 10) {
                 count += 1
                 // Sorted results should have downloads populated
                 #expect(model.downloads != nil)
@@ -561,7 +611,7 @@ import Testing
         @Test("List models sorted by likes")
         func listModelsSortByLikes() async throws {
             var count = 0
-            for try await model in client.listModels(sort: "likes", limit: 10) {
+            for try await model in client.listModels(sort: .likes, limit: 10) {
                 count += 1
                 // Sorted results should have likes populated
                 #expect(model.likes != nil)
@@ -572,7 +622,7 @@ import Testing
         @Test("List models with filter parameter")
         func listModelsWithFilter() async throws {
             var count = 0
-            for try await model in client.listModels(filter: "text-generation", limit: 10) {
+            for try await model in client.listModels(filter: ["text-generation"], limit: 10) {
                 count += 1
                 // Models with filter should have the pipeline tag
                 #expect(model.pipelineTag == "text-generation" || model.tags?.contains("text-generation") == true)
