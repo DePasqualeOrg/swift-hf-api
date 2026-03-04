@@ -112,7 +112,6 @@ public extension HubClient {
     /// - Parameters:
     ///   - id: The repository identifier (e.g., "datasets/squad").
     ///   - revision: The git revision (branch, tag, or commit hash). If nil, uses the repo's default branch (usually "main").
-    ///   - full: Whether to fetch most dataset data.
     ///   - expand: Fields to include in the response.
     ///   - filesMetadata: Whether to include file metadata such as blob information.
     /// - Returns: Information about the dataset.
@@ -120,7 +119,6 @@ public extension HubClient {
     func getDataset(
         _ id: Repo.ID,
         revision: String? = nil,
-        full: Bool? = nil,
         expand: ExtensibleCommaSeparatedList<DatasetExpandField>? = nil,
         filesMetadata: Bool? = nil
     ) async throws -> Dataset {
@@ -137,7 +135,6 @@ public extension HubClient {
         }
 
         var params: [String: Value] = [:]
-        if let full { params["full"] = .bool(full) }
         if let expand { params["expand"] = .string(expand.rawValue) }
         if let filesMetadata, filesMetadata { params["blobs"] = .bool(true) }
 

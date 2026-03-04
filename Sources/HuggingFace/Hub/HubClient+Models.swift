@@ -136,23 +136,17 @@ public extension HubClient {
     /// - Parameters:
     ///   - id: The repository identifier (e.g., "facebook/bart-large-cnn").
     ///   - revision: The git revision (branch, tag, or commit hash). If nil, uses the repo's default branch (usually "main").
-    ///   - full: Whether to fetch most model data.
     ///   - expand: Fields to include in the response.
     ///   - securityStatus: Whether to include repository security status.
     ///   - filesMetadata: Whether to include file metadata such as blob information.
-    ///   - cardData: Whether to include model card metadata.
-    ///   - fetchConfig: Whether to include the model config in the response.
     /// - Returns: Information about the model.
     /// - Throws: An error if the request fails or the response cannot be decoded.
     func getModel(
         _ id: Repo.ID,
         revision: String? = nil,
-        full: Bool? = nil,
         expand: ExtensibleCommaSeparatedList<ModelExpandField>? = nil,
         securityStatus: Bool? = nil,
-        filesMetadata: Bool? = nil,
-        cardData: Bool? = nil,
-        fetchConfig: Bool? = nil
+        filesMetadata: Bool? = nil
     ) async throws -> Model {
         var url = httpClient.host
             .appending(path: "api")
@@ -167,12 +161,9 @@ public extension HubClient {
         }
 
         var params: [String: Value] = [:]
-        if let full { params["full"] = .bool(full) }
         if let expand { params["expand"] = .string(expand.rawValue) }
         if let securityStatus { params["securityStatus"] = .bool(securityStatus) }
         if let filesMetadata, filesMetadata { params["blobs"] = .bool(true) }
-        if let cardData { params["cardData"] = .bool(cardData) }
-        if let fetchConfig { params["config"] = .bool(fetchConfig) }
 
         return try await httpClient.fetch(.get, url: url, params: params)
     }
