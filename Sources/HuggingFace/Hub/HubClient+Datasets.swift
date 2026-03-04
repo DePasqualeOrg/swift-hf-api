@@ -175,10 +175,15 @@ public extension HubClient {
 
     /// Lists Parquet files for a dataset.
     ///
+    /// The Hub API returns different response shapes depending on the parameters:
+    /// - No args: `{config: {split: [urls]}}`
+    /// - Subset only: `{split: [urls]}`
+    /// - Subset + split: `[urls]`
+    ///
     /// - Parameters:
     ///   - id: The repository identifier.
     ///   - subset: Optional subset/configuration name.
-    ///   - split: Optional split name.
+    ///   - split: Optional split name (requires subset).
     /// - Returns: List of Parquet file information.
     /// - Throws: An error if the request fails or the response cannot be decoded.
     func listParquetFiles(
@@ -195,7 +200,18 @@ public extension HubClient {
             }
         }
 
-        return try await httpClient.fetch(.get, path)
+        if subset != nil, split != nil {
+            return try await httpClient.fetch(.get, path)
+        } else if subset != nil {
+            let response: [String: [ParquetFileInfo]] = try await httpClient.fetch(.get, path)
+            return response.values.flatMap { $0 }
+        } else {
+            let response: [String: [String: [ParquetFileInfo]]] = try await httpClient.fetch(
+                .get,
+                path
+            )
+            return response.values.flatMap { $0.values.flatMap { $0 } }
+        }
     }
 
     // MARK: - Dataset Access Requests

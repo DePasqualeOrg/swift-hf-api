@@ -260,31 +260,33 @@ import Testing
             #expect(tags["languages"]?.count == 2)
         }
 
-        @Test("List parquet files", .mockURLSession)
+        // The Hub parquet endpoint returns different response shapes:
+        // - No args: {config: {split: [urls]}}
+        // - Subset only: {split: [urls]}
+        // - Subset + split: [urls]
+
+        @Test("List parquet files without parameters", .mockURLSession)
         func testListParquetFiles() async throws {
             let mockResponse = """
-                [
-                    {
-                        "dataset": "squad",
-                        "config": "default",
-                        "split": "train",
-                        "url": "https://huggingface.co/datasets/squad/resolve/main/data/train.parquet",
-                        "filename": "train.parquet",
-                        "size": 1024000
+                {
+                    "ParaphraseRC": {
+                        "test": [
+                            "https://huggingface.co/api/datasets/ibm/duorc/parquet/ParaphraseRC/test/0.parquet"
+                        ],
+                        "train": [
+                            "https://huggingface.co/api/datasets/ibm/duorc/parquet/ParaphraseRC/train/0.parquet"
+                        ]
                     },
-                    {
-                        "dataset": "squad",
-                        "config": "default",
-                        "split": "validation",
-                        "url": "https://huggingface.co/datasets/squad/resolve/main/data/validation.parquet",
-                        "filename": "validation.parquet",
-                        "size": 204800
+                    "SelfRC": {
+                        "test": [
+                            "https://huggingface.co/api/datasets/ibm/duorc/parquet/SelfRC/test/0.parquet"
+                        ]
                     }
-                ]
+                }
                 """
 
             await MockURLProtocol.setHandler { request in
-                #expect(request.url?.path == "/api/datasets/_/squad/parquet")
+                #expect(request.url?.path == "/api/datasets/ibm/duorc/parquet")
                 #expect(request.httpMethod == "GET")
 
                 let response = HTTPURLResponse(
@@ -298,31 +300,29 @@ import Testing
             }
 
             let client = createMockClient()
-            let repoID: Repo.ID = "_/squad"
+            let repoID: Repo.ID = "ibm/duorc"
             let files = try await client.listParquetFiles(repoID)
 
-            #expect(files.count == 2)
-            #expect(files[0].split == "train")
-            #expect(files[1].split == "validation")
+            #expect(files.count == 3)
+            let configs = Set(files.map(\.config))
+            #expect(configs == ["ParaphraseRC", "SelfRC"])
         }
 
         @Test("List parquet files with subset", .mockURLSession)
         func testListParquetFilesWithSubset() async throws {
             let mockResponse = """
-                [
-                    {
-                        "dataset": "squad",
-                        "config": "plain_text",
-                        "split": "train",
-                        "url": "https://huggingface.co/datasets/squad/resolve/main/data/plain_text/train.parquet",
-                        "filename": "train.parquet",
-                        "size": 1024000
-                    }
-                ]
+                {
+                    "test": [
+                        "https://huggingface.co/api/datasets/ibm/duorc/parquet/ParaphraseRC/test/0.parquet"
+                    ],
+                    "train": [
+                        "https://huggingface.co/api/datasets/ibm/duorc/parquet/ParaphraseRC/train/0.parquet"
+                    ]
+                }
                 """
 
             await MockURLProtocol.setHandler { request in
-                #expect(request.url?.path == "/api/datasets/_/squad/parquet/plain_text")
+                #expect(request.url?.path == "/api/datasets/ibm/duorc/parquet/ParaphraseRC")
                 #expect(request.httpMethod == "GET")
 
                 let response = HTTPURLResponse(
@@ -336,31 +336,25 @@ import Testing
             }
 
             let client = createMockClient()
-            let repoID: Repo.ID = "_/squad"
-            let files = try await client.listParquetFiles(repoID, subset: "plain_text")
+            let repoID: Repo.ID = "ibm/duorc"
+            let files = try await client.listParquetFiles(repoID, subset: "ParaphraseRC")
 
-            #expect(files.count == 1)
-            #expect(files[0].config == "plain_text")
+            #expect(files.count == 2)
+            let splits = Set(files.map(\.split))
+            #expect(splits == ["test", "train"])
         }
 
         @Test("List parquet files with subset and split", .mockURLSession)
         func testListParquetFilesWithSubsetAndSplit() async throws {
             let mockResponse = """
                 [
-                    {
-                        "dataset": "squad",
-                        "config": "plain_text",
-                        "split": "train",
-                        "url": "https://huggingface.co/datasets/squad/resolve/main/data/plain_text/train.parquet",
-                        "filename": "train.parquet",
-                        "size": 1024000
-                    }
+                    "https://huggingface.co/api/datasets/ibm/duorc/parquet/ParaphraseRC/train/0.parquet"
                 ]
                 """
 
             await MockURLProtocol.setHandler { request in
                 #expect(
-                    request.url?.path == "/api/datasets/_/squad/parquet/plain_text/train"
+                    request.url?.path == "/api/datasets/ibm/duorc/parquet/ParaphraseRC/train"
                 )
                 #expect(request.httpMethod == "GET")
 
@@ -375,57 +369,54 @@ import Testing
             }
 
             let client = createMockClient()
-            let repoID: Repo.ID = "_/squad"
+            let repoID: Repo.ID = "ibm/duorc"
             let files = try await client.listParquetFiles(
                 repoID,
-                subset: "plain_text",
+                subset: "ParaphraseRC",
                 split: "train"
             )
 
             #expect(files.count == 1)
+            #expect(files[0].dataset == "duorc")
+            #expect(files[0].config == "ParaphraseRC")
             #expect(files[0].split == "train")
+            #expect(files[0].filename == "0.parquet")
         }
 
-        @Test("List parquet files from URL-only response", .mockURLSession)
-        func testListParquetFilesWithURLOnlyResponse() async throws {
+        @Test("List parquet files with multiple shards", .mockURLSession)
+        func testListParquetFilesWithMultipleShards() async throws {
             let mockResponse = """
                 [
-                    "https://huggingface.co/api/datasets/ankislyakov/titanic/parquet/default/train/0.parquet"
+                    "https://huggingface.co/api/datasets/fancyzhx/amazon_polarity/parquet/amazon_polarity/train/0.parquet",
+                    "https://huggingface.co/api/datasets/fancyzhx/amazon_polarity/parquet/amazon_polarity/train/1.parquet"
                 ]
                 """
 
             await MockURLProtocol.setHandler { request in
-                #expect(request.url?.path == "/api/datasets/ankislyakov/titanic/parquet")
-                #expect(request.httpMethod == "GET")
-
                 let response = HTTPURLResponse(
                     url: request.url!,
                     statusCode: 200,
                     httpVersion: "HTTP/1.1",
                     headerFields: ["Content-Type": "application/json"]
                 )!
-
                 return (response, Data(mockResponse.utf8))
             }
 
             let client = createMockClient()
-            let repoID: Repo.ID = "ankislyakov/titanic"
-            let files = try await client.listParquetFiles(repoID)
-
-            #expect(files.count == 1)
-            #expect(files[0].dataset == "titanic")
-            #expect(files[0].config == "default")
-            #expect(files[0].split == "train")
-            #expect(files[0].filename == "0.parquet")
-            #expect(
-                files[0].url
-                    == "https://huggingface.co/api/datasets/ankislyakov/titanic/parquet/default/train/0.parquet"
+            let files = try await client.listParquetFiles(
+                "fancyzhx/amazon_polarity",
+                subset: "amazon_polarity",
+                split: "train"
             )
-            #expect(files[0].size == nil)
+
+            #expect(files.count == 2)
+            #expect(files[0].filename == "0.parquet")
+            #expect(files[1].filename == "1.parquet")
         }
 
-        @Test("Reject malformed URL-only parquet response", .mockURLSession)
-        func testListParquetFilesWithMalformedURLOnlyResponse() async throws {
+        @Test("Reject malformed parquet URL", .mockURLSession)
+        func testListParquetFilesWithMalformedURL() async throws {
+            // Missing "parquet" segment in URL path
             let mockResponse = """
                 [
                     "https://huggingface.co/api/datasets/ankislyakov/titanic/default/train/0.parquet"
@@ -433,9 +424,6 @@ import Testing
                 """
 
             await MockURLProtocol.setHandler { request in
-                #expect(request.url?.path == "/api/datasets/ankislyakov/titanic/parquet")
-                #expect(request.httpMethod == "GET")
-
                 let response = HTTPURLResponse(
                     url: request.url!,
                     statusCode: 200,
@@ -450,7 +438,11 @@ import Testing
             let repoID: Repo.ID = "ankislyakov/titanic"
 
             await #expect(throws: HTTPClientError.self) {
-                _ = try await client.listParquetFiles(repoID)
+                _ = try await client.listParquetFiles(
+                    repoID,
+                    subset: "default",
+                    split: "train"
+                )
             }
         }
 
@@ -478,6 +470,66 @@ import Testing
 
             await #expect(throws: HTTPClientError.self) {
                 _ = try await client.getDataset(repoID)
+            }
+        }
+    }
+
+    // MARK: - Integration Tests (Real API Calls)
+
+    /// Integration tests that make real API calls to the Hugging Face Hub.
+    ///
+    /// Skip these tests in CI by setting the `SKIP_INTEGRATION_TESTS` environment variable.
+    @Suite(
+        "Dataset Integration Tests",
+        .serialized,
+        .enabled(if: ProcessInfo.processInfo.environment["SKIP_INTEGRATION_TESTS"] == nil)
+    )
+    struct DatasetIntegrationTests {
+        let client = HubClient()
+
+        @Test("List parquet files without parameters returns nested response")
+        func listParquetFilesNoParams() async throws {
+            let files = try await client.listParquetFiles("ibm/duorc")
+
+            #expect(files.count > 0)
+            // ibm/duorc has multiple configs (ParaphraseRC, SelfRC)
+            let configs = Set(files.map(\.config))
+            #expect(configs.count > 1)
+            for file in files {
+                #expect(file.dataset == "duorc")
+                #expect(!file.config.isEmpty)
+                #expect(!file.split.isEmpty)
+                #expect(file.filename.hasSuffix(".parquet"))
+                #expect(file.url.contains("/parquet/"))
+            }
+        }
+
+        @Test("List parquet files with subset returns splits")
+        func listParquetFilesWithSubset() async throws {
+            let files = try await client.listParquetFiles("ibm/duorc", subset: "SelfRC")
+
+            #expect(files.count > 0)
+            let splits = Set(files.map(\.split))
+            #expect(splits.contains("train"))
+            #expect(splits.contains("test"))
+            for file in files {
+                #expect(file.config == "SelfRC")
+            }
+        }
+
+        @Test("List parquet files with subset and split returns flat array")
+        func listParquetFilesWithSubsetAndSplit() async throws {
+            let files = try await client.listParquetFiles(
+                "ibm/duorc",
+                subset: "SelfRC",
+                split: "train"
+            )
+
+            #expect(files.count > 0)
+            for file in files {
+                #expect(file.config == "SelfRC")
+                #expect(file.split == "train")
+                #expect(file.filename.hasSuffix(".parquet"))
             }
         }
     }
