@@ -109,6 +109,49 @@ import Testing
             #expect(datasets[0].id == "datasets/squad")
         }
 
+        @Test("List datasets with additional query parameters", .mockURLSession)
+        func testListDatasetsWithAdditionalParameters() async throws {
+            let mockResponse = """
+                [
+                    {
+                        "id": "datasets/squad"
+                    }
+                ]
+                """
+
+            await MockURLProtocol.setHandler { request in
+                #expect(request.url?.path == "/api/datasets")
+
+                let queryItems = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems
+                let query = Dictionary(uniqueKeysWithValues: (queryItems ?? []).map { ($0.name, $0.value ?? "") })
+
+                #expect(query["dataset_name"] == "squad")
+                #expect(query["language_creators"]?.contains("crowdsourced") == true)
+                #expect(query["size_categories"]?.contains("10K<n<100K") == true)
+
+                let response = HTTPURLResponse(
+                    url: request.url!,
+                    statusCode: 200,
+                    httpVersion: "HTTP/1.1",
+                    headerFields: ["Content-Type": "application/json"]
+                )!
+
+                return (response, Data(mockResponse.utf8))
+            }
+
+            let client = createMockClient()
+            var datasets: [Dataset] = []
+            for try await dataset in client.listDatasets(
+                datasetName: "squad",
+                languageCreators: ["crowdsourced"],
+                sizeCategories: ["10K<n<100K"]
+            ) {
+                datasets.append(dataset)
+            }
+
+            #expect(datasets.count == 1)
+        }
+
         @Test("Get specific dataset", .mockURLSession)
         func testGetDataset() async throws {
             let mockResponse = """

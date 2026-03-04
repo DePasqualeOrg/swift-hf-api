@@ -6,6 +6,29 @@ import Foundation
 // MARK: - Datasets API
 
 public extension HubClient {
+    /// Expandable dataset fields for Hub API responses.
+    enum DatasetExpandField: String, Hashable, CaseIterable, Sendable {
+        case author
+        case cardData
+        case citation
+        case createdAt
+        case disabled
+        case description
+        case downloads
+        case downloadsAllTime
+        case gated
+        case lastModified
+        case likes
+        case paperswithcodeID = "paperswithcode_id"
+        case `private`
+        case siblings
+        case sha
+        case tags
+        case trendingScore
+        case usedStorage
+        case resourceGroup
+    }
+
     /// Lists datasets from the Hub with automatic pagination.
     ///
     /// ```swift
@@ -18,9 +41,20 @@ public extension HubClient {
     ///   - search: Filter based on substrings for repos and their usernames.
     ///   - author: Filter datasets by an author or organization.
     ///   - filter: Filter based on tags (e.g., "task_categories:text-classification").
+    ///   - benchmark: Filter by benchmark value.
+    ///   - datasetName: Filter by full or partial dataset name.
+    ///   - gated: Filter by gated status.
+    ///   - languageCreators: Filter by language creator categories.
+    ///   - language: Filter by languages.
+    ///   - multilinguality: Filter by multilinguality categories.
+    ///   - sizeCategories: Filter by dataset size categories.
+    ///   - taskCategories: Filter by task categories.
+    ///   - taskIds: Filter by task identifiers.
     ///   - sort: Property to use when sorting (e.g., "downloads", "author").
+    ///   - direction: Direction in which to sort.
     ///   - limit: Maximum total number of datasets to return across all pages.
     ///   - full: Whether to fetch most dataset data, such as all tags, the files, etc.
+    ///   - expand: Fields to include in the response.
     ///   - config: Whether to also fetch the repo config.
     /// - Returns: An async sequence of datasets.
     func listDatasets(
@@ -28,18 +62,40 @@ public extension HubClient {
         author: String? = nil,
         filter: String? = nil,
         sort: String? = nil,
+        direction: SortDirection? = nil,
         limit: Int? = nil,
         full: Bool? = nil,
-        config: Bool? = nil
+        config: Bool? = nil,
+        benchmark: String? = nil,
+        datasetName: String? = nil,
+        gated: Bool? = nil,
+        languageCreators: CommaSeparatedList<String>? = nil,
+        language: CommaSeparatedList<String>? = nil,
+        multilinguality: CommaSeparatedList<String>? = nil,
+        sizeCategories: CommaSeparatedList<String>? = nil,
+        taskCategories: CommaSeparatedList<String>? = nil,
+        taskIds: CommaSeparatedList<String>? = nil,
+        expand: ExtensibleCommaSeparatedList<DatasetExpandField>? = nil
     ) -> PaginatedSequence<Dataset> {
         var params: [String: Value] = [:]
 
         if let search { params["search"] = .string(search) }
         if let author { params["author"] = .string(author) }
         if let filter { params["filter"] = .string(filter) }
+        if let benchmark { params["benchmark"] = .string(benchmark) }
+        if let datasetName { params["dataset_name"] = .string(datasetName) }
+        if let gated { params["gated"] = .bool(gated) }
+        if let languageCreators { params["language_creators"] = .string(languageCreators.rawValue) }
+        if let language { params["language"] = .string(language.rawValue) }
+        if let multilinguality { params["multilinguality"] = .string(multilinguality.rawValue) }
+        if let sizeCategories { params["size_categories"] = .string(sizeCategories.rawValue) }
+        if let taskCategories { params["task_categories"] = .string(taskCategories.rawValue) }
+        if let taskIds { params["task_ids"] = .string(taskIds.rawValue) }
         if let sort { params["sort"] = .string(sort) }
+        if let direction { params["direction"] = .int(direction.rawValue) }
         if let limit { params["limit"] = .int(limit) }
         if let full { params["full"] = .bool(full) }
+        if let expand { params["expand"] = .string(expand.rawValue) }
         if let config { params["config"] = .bool(config) }
 
         let capturedParams = params
@@ -60,13 +116,15 @@ public extension HubClient {
     ///   - id: The repository identifier (e.g., "datasets/squad").
     ///   - revision: The git revision (branch, tag, or commit hash). If nil, uses the repo's default branch (usually "main").
     ///   - full: Whether to fetch most dataset data.
-    ///   - filesMetadata: Whether to retrieve metadata for files (size, LFS metadata, etc).
+    ///   - expand: Fields to include in the response.
+    ///   - filesMetadata: Whether to include file metadata such as blob information.
     /// - Returns: Information about the dataset.
     /// - Throws: An error if the request fails or the response cannot be decoded.
     func getDataset(
         _ id: Repo.ID,
         revision: String? = nil,
         full: Bool? = nil,
+        expand: ExtensibleCommaSeparatedList<DatasetExpandField>? = nil,
         filesMetadata: Bool? = nil
     ) async throws -> Dataset {
         var url = httpClient.host
@@ -83,7 +141,8 @@ public extension HubClient {
 
         var params: [String: Value] = [:]
         if let full { params["full"] = .bool(full) }
-        if let filesMetadata { params["blobs"] = .bool(filesMetadata) }
+        if let expand { params["expand"] = .string(expand.rawValue) }
+        if let filesMetadata, filesMetadata { params["blobs"] = .bool(true) }
 
         return try await httpClient.fetch(.get, url: url, params: params)
     }
