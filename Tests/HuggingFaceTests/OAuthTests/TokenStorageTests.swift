@@ -7,7 +7,7 @@ import Testing
     import Glibc
 #endif
 
-@testable import HuggingFace
+@testable import HFAPI
 
 #if swift(>=6.1)
     @Suite("Token Storage Tests", .serialized)

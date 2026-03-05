@@ -7,7 +7,7 @@ import Foundation
 #endif
 import Testing
 
-@testable import HuggingFace
+@testable import HFAPI
 
 @Suite("Hub Client Tests")
 struct HubClientTests {

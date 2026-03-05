@@ -6,7 +6,7 @@ import Foundation
 #if canImport(FoundationNetworking)
     import FoundationNetworking
 #endif
-@testable import HuggingFace
+@testable import HFAPI
 
 @Suite("Git Tests")
 struct GitTests {

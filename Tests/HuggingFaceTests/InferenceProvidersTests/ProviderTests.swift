@@ -1,7 +1,7 @@
 import Foundation
 import Testing
 
-@testable import HuggingFace
+@testable import HFAPI
 
 #if swift(>=6.1)
     @Suite("Provider Tests")

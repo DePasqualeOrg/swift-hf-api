@@ -12,7 +12,7 @@ import Testing
     import FoundationNetworking
 #endif
 
-@testable import HuggingFace
+@testable import HFAPI
 
 #if swift(>=6.1)
     @Suite("Space Tests", .serialized)
