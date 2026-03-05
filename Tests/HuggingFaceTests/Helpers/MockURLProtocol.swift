@@ -8,7 +8,7 @@ import Testing
     import FoundationNetworking
 #endif
 
-@testable import HuggingFace
+@testable import HFAPI
 
 // MARK: - Thread-Safe Counter
 

@@ -15,8 +15,8 @@ let package = Package(
     ],
     products: [
         .library(
-            name: "HuggingFace",
-            targets: ["HuggingFace"]
+            name: "HFAPI",
+            targets: ["HFAPI"]
         )
     ],
     dependencies: [
@@ -27,22 +27,22 @@ let package = Package(
     ],
     targets: [
         .target(
-            name: "HuggingFace",
+            name: "HFAPI",
             dependencies: [
                 .product(name: "EventSource", package: "EventSource"),
                 .product(name: "Crypto", package: "swift-crypto"),
                 .product(name: "Xet", package: "swift-xet"),
                 .product(name: "FileLock", package: "swift-filelock"),
             ],
-            path: "Sources/HuggingFace"
+            path: "Sources/HFAPI"
         ),
         .testTarget(
             name: "HuggingFaceTests",
-            dependencies: ["HuggingFace"]
+            dependencies: ["HFAPI"]
         ),
         .testTarget(
             name: "Benchmarks",
-            dependencies: ["HuggingFace"]
+            dependencies: ["HFAPI"]
         ),
     ]
 )

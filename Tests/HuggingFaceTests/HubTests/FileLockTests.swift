@@ -9,7 +9,7 @@ import Foundation
 #endif
 import Testing
 
-@testable import HuggingFace
+@testable import HFAPI
 
 @Suite("FileLock Integration Tests")
 struct FileLockTests {

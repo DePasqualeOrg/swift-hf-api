@@ -1,7 +1,7 @@
 import Foundation
 import Testing
 
-@testable import HuggingFace
+@testable import HFAPI
 
 @Suite("Comma Separated List Tests")
 struct CommaSeparatedListTests {

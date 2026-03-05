@@ -7,7 +7,7 @@ import Foundation
 #endif
 import Testing
 
-@testable import HuggingFace
+@testable import HFAPI
 
 @Suite("Gated Mode Tests")
 struct GatedModeTests {

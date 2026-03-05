@@ -8,7 +8,7 @@ import Testing
     import FoundationNetworking
 #endif
 
-@testable import HuggingFace
+@testable import HFAPI
 
 @Suite("Pagination Tests")
 struct PaginationTests {

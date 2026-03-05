@@ -7,7 +7,7 @@ import Foundation
 #endif
 import Testing
 
-@testable import HuggingFace
+@testable import HFAPI
 
 /// Thread-safe wrapper around AsyncStream.Continuation for use in @Sendable closures.
 private final class StreamYielder<T: Sendable>: Sendable {
