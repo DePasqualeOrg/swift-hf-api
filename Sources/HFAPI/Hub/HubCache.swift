@@ -697,6 +697,12 @@ public enum HubCacheError: Error, LocalizedError {
     /// The API returned an unexpected or incomplete response.
     case unexpectedAPIResponse(String)
 
+    /// The server did not provide a file size, so integrity validation cannot be performed.
+    case missingFileSize(String)
+
+    /// Downloaded file size does not match the expected size from the server.
+    case fileSizeMismatch(expected: Int, actual: Int)
+
     public var errorDescription: String? {
         switch self {
         case .invalidPathComponent(let component):
@@ -710,6 +716,11 @@ public enum HubCacheError: Error, LocalizedError {
             return "A cache is required for this operation but none is configured"
         case .unexpectedAPIResponse(let message):
             return message
+        case .missingFileSize(let path):
+            return "Server did not provide a file size for '\(path)'. Cannot verify download integrity."
+        case .fileSizeMismatch(let expected, let actual):
+            return
+                "Downloaded file size (\(actual) bytes) does not match expected size (\(expected) bytes). The file may be corrupted."
         }
     }
 }
