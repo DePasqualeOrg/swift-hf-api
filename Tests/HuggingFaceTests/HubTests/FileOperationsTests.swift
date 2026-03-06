@@ -626,6 +626,72 @@ import Testing
                 _ = try await client.downloadContentsOfFile(at: "test.txt", from: repoID)
             }
         }
+
+        // MARK: - Cache Integrity: Post-Download Size Validation
+
+        #if !canImport(FoundationNetworking)
+            @Test("downloadFile throws when server returns fewer bytes than Content-Length", .mockURLSession)
+            func testDownloadFileDetectsShortResponse() async throws {
+                let commitHash = "abc123def456abc123def456abc123def456abc1"
+                let fileEtag = "mock-etag-short-response"
+                let expectedSize = 1000
+                let actualBody = Data(repeating: 0xAB, count: 500)
+
+                await MockURLProtocol.setHandler { request in
+                    let path = request.url?.path ?? ""
+                    if path.hasSuffix("/config.json") {
+                        let headers: [String: String] =
+                            if request.httpMethod == "HEAD" {
+                                [
+                                    "ETag": "\"\(fileEtag)\"",
+                                    "X-Repo-Commit": commitHash,
+                                    "Content-Length": "\(expectedSize)",
+                                ]
+                            } else {
+                                ["Content-Type": "application/octet-stream"]
+                            }
+                        let response = HTTPURLResponse(
+                            url: request.url!,
+                            statusCode: 200,
+                            httpVersion: "HTTP/1.1",
+                            headerFields: headers
+                        )!
+                        return (response, request.httpMethod == "HEAD" ? Data() : actualBody)
+                    }
+                    let response = HTTPURLResponse(
+                        url: request.url!,
+                        statusCode: 404,
+                        httpVersion: "HTTP/1.1",
+                        headerFields: [:]
+                    )!
+                    return (response, Data())
+                }
+
+                let (client, cacheDir) = createMockClientWithCache()
+                defer { try? FileManager.default.removeItem(at: cacheDir) }
+
+                await #expect {
+                    _ = try await client.downloadFile(
+                        at: "config.json",
+                        from: "user/model",
+                        transport: .lfs
+                    )
+                } throws: { error in
+                    guard case HubCacheError.fileSizeMismatch(let expected, let actual) = error
+                    else { return false }
+                    return expected == 1000 && actual == 500
+                }
+
+                // Verify no blob file was left on disk
+                let cache = HubCache(cacheDirectory: cacheDir)
+                let blobsDir = cache.blobsDirectory(repo: "user/model", kind: .model)
+                if FileManager.default.fileExists(atPath: blobsDir.path) {
+                    let blobs = try FileManager.default.contentsOfDirectory(atPath: blobsDir.path)
+                        .filter { !$0.hasSuffix(".lock") && !$0.hasSuffix(".incomplete") }
+                    #expect(blobs.isEmpty, "No blob files should remain after size mismatch")
+                }
+            }
+        #endif
     }
 
 #endif  // swift(>=6.1)

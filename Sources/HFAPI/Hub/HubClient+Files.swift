@@ -348,23 +348,49 @@ public extension HubClient {
         endpoint: FileDownloadEndpoint = .resolve,
         cachePolicy: URLRequest.CachePolicy = .useProtocolCachePolicy,
         progress: Progress? = nil,
-        transport: FileDownloadTransport = .automatic
+        transport: FileDownloadTransport = .automatic,
+        expectedSize: Int? = nil
     ) async throws -> URL {
-        // Check cache first
+        // Check cache first. This avoids a HEAD request when the file is already
+        // cached. Python's hf_hub_download has the same early return (existence-only),
+        // trusting that the caching logic wrote the blob atomically. We go further
+        // by also validating the file size when the caller provides an expected size
+        // (e.g., from the API's file list). This self-heals corrupted caches — if a
+        // blob was truncated by a bug in an earlier version, the size mismatch causes
+        // a cache miss and the file is re-downloaded.
         if let cachedPath = cache.cachedFilePath(
             repo: repo,
             kind: kind,
             revision: revision,
             filename: repoPath
         ) {
-            if let progress {
-                progress.completedUnitCount = progress.totalUnitCount
+            if let expectedSize {
+                let resolved = cachedPath.resolvingSymlinksInPath()
+                if let attrs = try? FileManager.default.attributesOfItem(atPath: resolved.path),
+                    let actualSize = attrs[.size] as? Int,
+                    actualSize != expectedSize
+                {
+                    // Size mismatch — fall through to re-download
+                } else {
+                    if let progress {
+                        progress.completedUnitCount = progress.totalUnitCount
+                    }
+                    return try copyToLocalDirectoryIfNeeded(
+                        cachedPath,
+                        repoPath: repoPath,
+                        localDirectory: destination
+                    )
+                }
+            } else {
+                if let progress {
+                    progress.completedUnitCount = progress.totalUnitCount
+                }
+                return try copyToLocalDirectoryIfNeeded(
+                    cachedPath,
+                    repoPath: repoPath,
+                    localDirectory: destination
+                )
             }
-            return try copyToLocalDirectoryIfNeeded(
-                cachedPath,
-                repoPath: repoPath,
-                localDirectory: destination
-            )
         }
 
         if localFilesOnly {
@@ -419,6 +445,7 @@ public extension HubClient {
             kind: kind,
             revision: revision,
             repoPath: repoPath,
+            expectedSize: expectedSize,
             progress: progress
         )
         return try copyToLocalDirectoryIfNeeded(
@@ -445,6 +472,7 @@ public extension HubClient {
         kind: Repo.Kind,
         revision: String,
         repoPath: String,
+        expectedSize callerExpectedSize: Int? = nil,
         progress: Progress?
     ) async throws -> URL {
         let fileManager = FileManager.default
@@ -460,26 +488,18 @@ public extension HubClient {
         let blobsDir = cache.blobsDirectory(repo: repo, kind: kind)
         let blobPath = blobsDir.appendingPathComponent(normalizedEtag)
 
-        // Check if blob already exists (skip download)
-        if fileManager.fileExists(atPath: blobPath.path) {
-            return try createCacheEntries(
-                cache: cache,
-                repo: repo,
-                kind: kind,
-                revision: revision,
-                commitHash: commitHash,
-                repoPath: repoPath,
-                etag: normalizedEtag
-            )
+        // Require a known file size for integrity validation. Use the HEAD response
+        // size when available, falling back to the caller-provided size (e.g., from
+        // the model API's siblings list). Python also requires size (raises
+        // FileMetadataError if missing). This guard only fires when the file isn't
+        // cached (the cache-first check above returns early for cached files).
+        guard let expectedSize = metadata?.size ?? callerExpectedSize else {
+            throw HubCacheError.missingFileSize(repoPath)
         }
 
-        // Acquire lock to prevent parallel downloads of the same blob
-        let locksDir = cache.locksDirectory(repo: repo, kind: kind)
-        let lockPath = locksDir.appendingPathComponent(normalizedEtag)
-        let lock = await FileLock(lockPath: lockPath.appendingPathExtension("lock"))
-        return try await lock.withLock {
-            // Double-check blob doesn't exist after acquiring lock
-            if fileManager.fileExists(atPath: blobPath.path) {
+        // Check if blob already exists (skip download)
+        if fileManager.fileExists(atPath: blobPath.path) {
+            if isBlobSizeValid(atPath: blobPath.path, expectedSize: expectedSize) {
                 return try createCacheEntries(
                     cache: cache,
                     repo: repo,
@@ -490,6 +510,29 @@ public extension HubClient {
                     etag: normalizedEtag
                 )
             }
+            // Size mismatch — corrupted blob will be deleted inside the lock
+        }
+
+        // Acquire lock to prevent parallel downloads of the same blob
+        let locksDir = cache.locksDirectory(repo: repo, kind: kind)
+        let lockPath = locksDir.appendingPathComponent(normalizedEtag)
+        let lock = await FileLock(lockPath: lockPath.appendingPathExtension("lock"))
+        return try await lock.withLock {
+            // Double-check blob doesn't exist after acquiring lock
+            if fileManager.fileExists(atPath: blobPath.path) {
+                if isBlobSizeValid(atPath: blobPath.path, expectedSize: expectedSize) {
+                    return try createCacheEntries(
+                        cache: cache,
+                        repo: repo,
+                        kind: kind,
+                        revision: revision,
+                        commitHash: commitHash,
+                        repoPath: repoPath,
+                        etag: normalizedEtag
+                    )
+                }
+                try? fileManager.removeItem(at: blobPath)
+            }
 
             // Create blobs directory
             try fileManager.createDirectory(at: blobsDir, withIntermediateDirectories: true)
@@ -499,6 +542,7 @@ public extension HubClient {
                 try await downloadToCacheLinux(
                     request: request,
                     blobPath: blobPath,
+                    expectedSize: expectedSize,
                     progress: progress
                 )
             #else
@@ -507,6 +551,7 @@ public extension HubClient {
                     blobPath: blobPath,
                     etag: normalizedEtag,
                     blobsDir: blobsDir,
+                    expectedSize: expectedSize,
                     progress: progress
                 )
             #endif
@@ -520,6 +565,32 @@ public extension HubClient {
                 commitHash: commitHash,
                 repoPath: repoPath,
                 etag: normalizedEtag
+            )
+        }
+    }
+
+    /// Checks whether a blob's on-disk size matches the expected size.
+    private func isBlobSizeValid(atPath path: String, expectedSize: Int) -> Bool {
+        guard
+            let attrs = try? FileManager.default.attributesOfItem(atPath: path),
+            let actualSize = attrs[.size] as? Int
+        else { return false }
+        return actualSize == expectedSize
+    }
+
+    /// Validates a downloaded file's size against the expected size.
+    /// Removes the file and throws if there is a mismatch.
+    private func validateDownloadedFileSize(
+        at path: URL,
+        expectedSize: Int
+    ) throws {
+        let attrs = try FileManager.default.attributesOfItem(atPath: path.path)
+        let actualSize = (attrs[.size] as? Int) ?? 0
+        if actualSize != expectedSize {
+            try? FileManager.default.removeItem(at: path)
+            throw HubCacheError.fileSizeMismatch(
+                expected: expectedSize,
+                actual: actualSize
             )
         }
     }
@@ -580,7 +651,8 @@ public extension HubClient {
                 endpoint: endpoint,
                 cachePolicy: cachePolicy,
                 progress: progress,
-                transport: .lfs
+                transport: .lfs,
+                expectedSize: entry.size
             )
         }
 
@@ -592,7 +664,8 @@ public extension HubClient {
             endpoint: endpoint,
             cachePolicy: cachePolicy,
             progress: progress,
-            transport: transport
+            transport: transport,
+            expectedSize: entry.size
         )
     }
 
@@ -601,6 +674,7 @@ public extension HubClient {
         private func downloadToCacheLinux(
             request: URLRequest,
             blobPath: URL,
+            expectedSize: Int,
             progress: Progress?
         ) async throws {
             let (tempURL, response) = try await session.asyncDownload(for: request, progress: progress)
@@ -609,6 +683,9 @@ public extension HubClient {
             // Move temp file to blob path
             try? FileManager.default.removeItem(at: blobPath)
             try FileManager.default.moveItem(at: tempURL, to: blobPath)
+
+            // Validate size after move
+            try validateDownloadedFileSize(at: blobPath, expectedSize: expectedSize)
         }
     #else
         /// Apple: Downloads file to cache with resume support.
@@ -621,6 +698,7 @@ public extension HubClient {
             blobPath: URL,
             etag: String,
             blobsDir: URL,
+            expectedSize: Int,
             progress: Progress?
         ) async throws {
             let fileManager = FileManager.default
@@ -700,6 +778,9 @@ public extension HubClient {
                     try? fileManager.removeItem(at: blobPath)
                     try fileManager.moveItem(at: tempURL, to: blobPath)
                 }
+
+                // Validate size after move
+                try validateDownloadedFileSize(at: blobPath, expectedSize: expectedSize)
 
                 return
             }
@@ -1304,6 +1385,7 @@ private struct XetFileInfo {
     let fileID: String
     let etag: String?
     let commitHash: String?
+    let size: Int?
 }
 
 private extension HubClient {
@@ -1370,20 +1452,45 @@ private extension HubClient {
         let blobsDir = cache.blobsDirectory(repo: repo, kind: kind)
         let blobPath = blobsDir.appendingPathComponent(normalizedEtag)
 
-        if !fileManager.fileExists(atPath: blobPath.path) {
+        // Require a known file size for integrity validation (see downloadWithCacheCoordination).
+        guard let expectedSize = xetInfo.size else {
+            throw HubCacheError.missingFileSize(repoPath)
+        }
+        let needsDownload =
+            !fileManager.fileExists(atPath: blobPath.path)
+            || !isBlobSizeValid(atPath: blobPath.path, expectedSize: expectedSize)
+
+        if needsDownload {
             let locksDir = cache.locksDirectory(repo: repo, kind: kind)
             let lockPath = locksDir.appendingPathComponent(normalizedEtag)
             let lock = await FileLock(lockPath: lockPath.appendingPathExtension("lock"))
             try await lock.withLock {
                 // Double-check after acquiring lock
-                if !fileManager.fileExists(atPath: blobPath.path) {
+                let stillNeeded =
+                    !fileManager.fileExists(atPath: blobPath.path)
+                    || !isBlobSizeValid(atPath: blobPath.path, expectedSize: expectedSize)
+                if stillNeeded {
+                    try? fileManager.removeItem(at: blobPath)
                     try fileManager.createDirectory(at: blobsDir, withIntermediateDirectories: true)
+
+                    // Download to .incomplete, validate, then atomically move
+                    let incompletePath = blobsDir.appendingPathComponent(
+                        "\(normalizedEtag).incomplete"
+                    )
+                    try? fileManager.removeItem(at: incompletePath)
                     _ = try await Xet.withDownloader(
                         refreshURL: xetRefreshURL(for: repo, kind: kind, revision: revision),
                         hubToken: try? await httpClient.tokenProvider.getToken()
                     ) { downloader in
-                        try await downloader.download(xetInfo.fileID, to: blobPath)
+                        try await downloader.download(xetInfo.fileID, to: incompletePath)
                     }
+
+                    try validateDownloadedFileSize(
+                        at: incompletePath,
+                        expectedSize: expectedSize
+                    )
+                    try? fileManager.removeItem(at: blobPath)
+                    try fileManager.moveItem(at: incompletePath, to: blobPath)
                 }
             }
         }
@@ -1430,7 +1537,7 @@ private extension HubClient {
 
         let rawSize =
             httpResponse.value(forHTTPHeaderField: "X-Linked-Size")
-            ?? ((200 ... 299).contains(httpResponse.statusCode)
+            ?? ((200 ..< 300).contains(httpResponse.statusCode)
                 ? httpResponse.value(forHTTPHeaderField: "Content-Length")
                 : nil)
         let fileSizeBytes = rawSize.flatMap(Int.init)
@@ -1454,7 +1561,8 @@ private extension HubClient {
         return XetFileInfo(
             fileID: fileID,
             etag: etag.map { HubCache.normalizeEtag($0) },
-            commitHash: commitHash
+            commitHash: commitHash,
+            size: fileSizeBytes
         )
     }
 
@@ -1791,9 +1899,20 @@ private func verifiedSnapshotPath(
     }
 
     let allPresent = entries.allSatisfy { entry in
-        FileManager.default.fileExists(
-            atPath: snapshotDir.appendingPathComponent(entry.path).path
-        )
+        let path = snapshotDir.appendingPathComponent(entry.path).path
+        guard FileManager.default.fileExists(atPath: path) else { return false }
+        // Validate file size if known. Resolve symlinks first because
+        // attributesOfItem returns the symlink's own size, not the target's.
+        if let expectedSize = entry.size {
+            let resolved = URL(fileURLWithPath: path).resolvingSymlinksInPath().path
+            if let attrs = try? FileManager.default.attributesOfItem(atPath: resolved),
+                let actualSize = attrs[.size] as? Int,
+                actualSize != expectedSize
+            {
+                return false
+            }
+        }
+        return true
     }
 
     return allPresent ? snapshotDir : nil
@@ -1851,6 +1970,8 @@ struct FileMetadata {
     /// The ETag for cache storage (X-Linked-Etag for xet files, ETag otherwise).
     /// This matches huggingface_hub's behavior for Python cache compatibility.
     let etag: String?
+    /// The expected file size from Content-Length or X-Linked-Size.
+    let size: Int?
 }
 
 extension HubClient {
@@ -1859,12 +1980,15 @@ extension HubClient {
     /// before the redirect to CDN (which doesn't have these headers).
     /// Follows same-host redirects (e.g., renamed repos) but blocks cross-host redirects (e.g., CDN).
     func fetchFileMetadata(url: URL) async throws -> FileMetadata {
-        let request = try await httpClient.createRequest(.head, url: url)
+        var request = try await httpClient.createRequest(.head, url: url)
+        // Prevent gzip encoding so Content-Length reflects the actual file size.
+        // Matches huggingface_hub's Accept-Encoding: identity on HEAD requests.
+        request.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
 
         let (_, response) = try await metadataSession.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse else {
-            return FileMetadata(commitHash: nil, etag: nil)
+            return FileMetadata(commitHash: nil, etag: nil, size: nil)
         }
 
         // Use X-Linked-Etag if available (xet storage), otherwise fall back to ETag.
@@ -1872,10 +1996,21 @@ extension HubClient {
         let linkedEtag = httpResponse.value(forHTTPHeaderField: "X-Linked-Etag")
         let etag = linkedEtag ?? httpResponse.value(forHTTPHeaderField: "ETag")
         let commitHash = httpResponse.value(forHTTPHeaderField: "X-Repo-Commit")
+        let linkedSize = httpResponse.value(forHTTPHeaderField: "X-Linked-Size")
+        // Only use Content-Length from successful responses. For blocked redirects
+        // (cross-host), Content-Length is the redirect body size, not the file size.
+        let contentLength: String? =
+            if (200 ..< 300).contains(httpResponse.statusCode) {
+                httpResponse.value(forHTTPHeaderField: "Content-Length")
+            } else {
+                nil
+            }
+        let size = (linkedSize ?? contentLength).flatMap(Int.init)
 
         return FileMetadata(
             commitHash: commitHash,
-            etag: etag.map { HubCache.normalizeEtag($0) }
+            etag: etag.map { HubCache.normalizeEtag($0) },
+            size: size
         )
     }
 }
@@ -1905,8 +2040,17 @@ final class SameHostRedirectDelegate: NSObject, URLSessionTaskDelegate, @uncheck
         }
 
         if originalHost == newHost {
-            // Same host redirect (e.g., renamed repo) - follow it
-            completionHandler(request)
+            // Same host redirect (e.g., renamed repo) — follow it.
+            // Preserve custom headers (e.g., Accept-Encoding, Authorization)
+            // that URLSession drops when creating the redirect request.
+            var redirectRequest = request
+            if let originalHeaders = task.originalRequest?.allHTTPHeaderFields {
+                for (key, value) in originalHeaders
+                where redirectRequest.value(forHTTPHeaderField: key) == nil {
+                    redirectRequest.setValue(value, forHTTPHeaderField: key)
+                }
+            }
+            completionHandler(redirectRequest)
         } else {
             // Different host redirect (e.g., CDN) - block to capture headers
             completionHandler(nil)
