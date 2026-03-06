@@ -351,24 +351,46 @@ public extension HubClient {
         transport: FileDownloadTransport = .automatic,
         expectedSize: Int? = nil
     ) async throws -> URL {
-        // Check cache first. This is an existence-only check (no size validation),
-        // matching Python's hf_hub_download. Integrity is ensured by atomic writes
-        // and post-download size validation when the blob is first created.
-        // This also avoids a HEAD request when the file is already cached.
+        // Check cache first. This avoids a HEAD request when the file is already
+        // cached. Python's hf_hub_download has the same early return (existence-only),
+        // trusting that the caching logic wrote the blob atomically. We go further
+        // by also validating the file size when the caller provides an expected size
+        // (e.g., from the API's file list). This self-heals corrupted caches — if a
+        // blob was truncated by a bug in an earlier version, the size mismatch causes
+        // a cache miss and the file is re-downloaded.
         if let cachedPath = cache.cachedFilePath(
             repo: repo,
             kind: kind,
             revision: revision,
             filename: repoPath
         ) {
-            if let progress {
-                progress.completedUnitCount = progress.totalUnitCount
+            if let expectedSize {
+                let resolved = cachedPath.resolvingSymlinksInPath()
+                if let attrs = try? FileManager.default.attributesOfItem(atPath: resolved.path),
+                    let actualSize = attrs[.size] as? Int,
+                    actualSize != expectedSize
+                {
+                    // Size mismatch — fall through to re-download
+                } else {
+                    if let progress {
+                        progress.completedUnitCount = progress.totalUnitCount
+                    }
+                    return try copyToLocalDirectoryIfNeeded(
+                        cachedPath,
+                        repoPath: repoPath,
+                        localDirectory: destination
+                    )
+                }
+            } else {
+                if let progress {
+                    progress.completedUnitCount = progress.totalUnitCount
+                }
+                return try copyToLocalDirectoryIfNeeded(
+                    cachedPath,
+                    repoPath: repoPath,
+                    localDirectory: destination
+                )
             }
-            return try copyToLocalDirectoryIfNeeded(
-                cachedPath,
-                repoPath: repoPath,
-                localDirectory: destination
-            )
         }
 
         if localFilesOnly {

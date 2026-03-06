@@ -105,6 +105,52 @@ import Testing
             )
         }
 
+        // MARK: - downloadFile: Corrupted Blob with Intact Symlink
+
+        @Test("downloadFile re-downloads when blob is truncated but symlink still exists")
+        func downloadFileRecoversFromCorruptedBlobWithSymlink() async throws {
+            let repoID: Repo.ID = "google-t5/t5-base"
+            let filename = "config.json"
+            let (client, cache) = createClient()
+
+            let model = try await client.getModel(repoID, filesMetadata: true)
+            let sibling = try #require(
+                model.siblings?.first { $0.relativeFilename == filename }
+            )
+            let fileSize = try #require(sibling.size)
+            let entry = Git.TreeEntry(
+                path: filename,
+                type: .file,
+                oid: nil,
+                size: fileSize,
+                lastCommit: nil
+            )
+
+            // Download to populate cache
+            let cachedPath = try await client.downloadFile(entry, from: repoID)
+            let correctContent = try Data(contentsOf: cachedPath)
+            #expect(correctContent.count > 10)
+
+            // Truncate the blob but keep the symlink intact.
+            // This simulates a cache corrupted by a previous version of the library.
+            let blobsDir = cache.blobsDirectory(repo: repoID, kind: .model)
+            let blobs = try findBlobs(in: blobsDir)
+            for blob in blobs {
+                let blobPath = blobsDir.appendingPathComponent(blob)
+                try Data(repeating: 0, count: 5).write(to: blobPath)
+            }
+
+            // Re-download — the cache-hit path should detect the size mismatch
+            // and fall through to re-download
+            let recoveredPath = try await client.downloadFile(entry, from: repoID)
+            let recoveredContent = try Data(contentsOf: recoveredPath)
+
+            #expect(
+                recoveredContent == correctContent,
+                "Recovered file should match original content"
+            )
+        }
+
         // MARK: - downloadSnapshot: Corrupted Blob Recovery
 
         @Test("downloadSnapshot re-downloads when blob is truncated")
