@@ -1195,7 +1195,8 @@ public extension HubClient {
         let startTime = Date().timeIntervalSinceReferenceDate
         progressHandler?(totalProgress)
 
-        // Track speed updates - updated periodically, handler called after file completions
+        // Periodically update speed and notify the caller so progress is visible
+        // during long single-file downloads (not just at file boundaries).
         let speedUpdateTask = Task {
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: DownloadConstants.speedUpdateIntervalNanoseconds)
@@ -1205,6 +1206,7 @@ public extension HubClient {
                     let speed = Double(bytesCompleted) / elapsed
                     totalProgress.setUserInfoObject(speed, forKey: .throughputKey)
                 }
+                progressHandler?(totalProgress)
             }
         }
         defer { speedUpdateTask.cancel() }
