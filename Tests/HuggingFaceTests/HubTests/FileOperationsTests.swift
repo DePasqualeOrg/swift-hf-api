@@ -375,9 +375,13 @@ import Testing
                                 [
                                     "ETag": "\"\(fileEtag)\"",
                                     "X-Repo-Commit": commitHash,
+                                    "Content-Length": "\(fileBody.count)",
                                 ]
                             } else {
-                                ["Content-Type": "application/octet-stream"]
+                                [
+                                    "Content-Type": "application/octet-stream",
+                                    "Content-Length": "\(fileBody.count)",
+                                ]
                             }
                         let response = HTTPURLResponse(
                             url: request.url!,
@@ -456,9 +460,13 @@ import Testing
                                 [
                                     "ETag": "\"\(fileEtag)\"",
                                     "X-Repo-Commit": commitHash,
+                                    "Content-Length": "\(fileBody.count)",
                                 ]
                             } else {
-                                ["Content-Type": "application/octet-stream"]
+                                [
+                                    "Content-Type": "application/octet-stream",
+                                    "Content-Length": "\(fileBody.count)",
+                                ]
                             }
                         let response = HTTPURLResponse(
                             url: request.url!,

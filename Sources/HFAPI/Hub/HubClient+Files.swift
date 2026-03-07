@@ -875,7 +875,14 @@ public extension HubClient {
             totalBytesWritten: Int64,
             totalBytesExpectedToWrite: Int64
         ) {
-            progress.totalUnitCount = resumeOffset + totalBytesExpectedToWrite
+            // Only update totalUnitCount when the server provides Content-Length.
+            // When using chunked transfer encoding, totalBytesExpectedToWrite is
+            // NSURLSessionTransferSizeUnknown (-1), which would corrupt the
+            // Progress parent-child tree (fractionCompleted returns 0 for
+            // negative totalUnitCount).
+            if totalBytesExpectedToWrite >= 0 {
+                progress.totalUnitCount = resumeOffset + totalBytesExpectedToWrite
+            }
             progress.completedUnitCount = resumeOffset + totalBytesWritten
 
             let elapsed = CFAbsoluteTimeGetCurrent() - startTime
@@ -913,9 +920,12 @@ public extension HubClient {
             guard !hasResumed else { return }
             hasResumed = true
 
-            if let error {
-                continuation.resume(throwing: error)
-            }
+            // Resume with the error if one occurred. If error is nil,
+            // didFinishDownloadingTo should have already resumed the
+            // continuation. Reaching here with nil error means the download
+            // completed without producing a file — resume with an error to
+            // avoid leaking the continuation.
+            continuation.resume(throwing: error ?? URLError(.cannotWriteToFile))
         }
     }
 #endif
