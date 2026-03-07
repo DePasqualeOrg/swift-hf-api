@@ -20,19 +20,19 @@ let package = Package(
         )
     ],
     dependencies: [
-        .package(url: "https://github.com/mattt/EventSource", from: "1.0.0"),
         .package(url: "https://github.com/apple/swift-crypto", "1.0.0" ..< "5.0.0"),
         .package(url: "https://github.com/DePasqualeOrg/swift-xet", from: "0.1.0"),
         .package(url: "https://github.com/DePasqualeOrg/swift-filelock", from: "0.1.1"),
+        .package(url: "https://github.com/DePasqualeOrg/swift-sse", .upToNextMinor(from: "0.1.0")),
     ],
     targets: [
         .target(
             name: "HFAPI",
             dependencies: [
-                .product(name: "EventSource", package: "EventSource"),
                 .product(name: "Crypto", package: "swift-crypto"),
                 .product(name: "Xet", package: "swift-xet"),
                 .product(name: "FileLock", package: "swift-filelock"),
+                .product(name: "SSE", package: "swift-sse"),
             ],
             path: "Sources/HFAPI"
         ),

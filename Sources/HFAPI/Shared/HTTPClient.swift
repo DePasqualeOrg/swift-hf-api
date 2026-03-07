@@ -2,7 +2,7 @@
 // Copyright © Anthony DePasquale
 
 import Foundation
-import EventSource
+import SSE
 
 #if canImport(FoundationNetworking)
     import FoundationNetworking
@@ -308,7 +308,7 @@ final class HTTPClient: @unchecked Sendable {
                     let request = try await requestBuilder()
 
                     #if canImport(FoundationNetworking)
-                        // Linux: Use buffered approach since true streaming is not available
+                        // Linux: Use buffered transport, but parse the response as spec-compliant SSE.
                         let (data, response) = try await session.data(for: request)
                         let httpResponse = try validateResponse(response, data: data)
 
@@ -316,27 +316,14 @@ final class HTTPClient: @unchecked Sendable {
                             return
                         }
 
-                        // Parse SSE events from the buffered response
-                        guard let responseString = String(data: data, encoding: .utf8) else {
-                            continuation.finish()
-                            return
-                        }
-
-                        for line in responseString.components(separatedBy: "\n") {
-                            let trimmed = line.trimmingCharacters(in: .whitespaces)
-                            guard trimmed.hasPrefix("data:") else { continue }
-
-                            let eventData = String(trimmed.dropFirst(5)).trimmingCharacters(
-                                in: .whitespaces
-                            )
-
+                        for event in Parser.parse(data) {
                             // Check for [DONE] signal
-                            if eventData == "[DONE]" {
+                            if event.data.trimmingCharacters(in: .whitespacesAndNewlines) == "[DONE]" {
                                 continuation.finish()
                                 return
                             }
 
-                            guard let jsonData = eventData.data(using: .utf8) else {
+                            guard let jsonData = event.data.data(using: .utf8) else {
                                 continue
                             }
 
