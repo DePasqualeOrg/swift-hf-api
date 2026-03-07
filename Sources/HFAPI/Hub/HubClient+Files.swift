@@ -729,13 +729,16 @@ public extension HubClient {
                     resumeRequest.setValue("bytes=\(resumeSize)-", forHTTPHeaderField: "Range")
                 }
 
-                let delegate = progress.map {
-                    DownloadProgressDelegate(progress: $0, resumeOffset: resumeSize)
+                let (tempURL, response): (URL, URLResponse)
+                if let progress {
+                    (tempURL, response) = try await downloadWithProgress(
+                        request: resumeRequest,
+                        progress: progress,
+                        resumeOffset: resumeSize
+                    )
+                } else {
+                    (tempURL, response) = try await session.download(for: resumeRequest)
                 }
-                let (tempURL, response) = try await session.download(
-                    for: resumeRequest,
-                    delegate: delegate
-                )
 
                 guard let httpResponse = response as? HTTPURLResponse else {
                     throw HTTPClientError.unexpectedError("Invalid HTTP response")
@@ -786,6 +789,33 @@ public extension HubClient {
             }
         }
 
+        /// Downloads a file using the callback-based URLSession API with a delegate for progress tracking.
+        ///
+        /// The async `URLSession.download(for:delegate:)` API does not call `URLSessionDownloadDelegate`
+        /// methods (only `URLSessionTaskDelegate`), so progress callbacks never fire. This method uses
+        /// the older callback-based `downloadTask(with:)` with a dedicated session to get real progress.
+        private func downloadWithProgress(
+            request: URLRequest,
+            progress: Progress,
+            resumeOffset: Int64
+        ) async throws -> (URL, URLResponse) {
+            try await withCheckedThrowingContinuation { continuation in
+                let delegate = CallbackDownloadDelegate(
+                    progress: progress,
+                    resumeOffset: resumeOffset,
+                    continuation: continuation
+                )
+                let downloadSession = URLSession(
+                    configuration: session.configuration,
+                    delegate: delegate,
+                    delegateQueue: nil
+                )
+                let task = downloadSession.downloadTask(with: request)
+                delegate.task = task
+                task.resume()
+            }
+        }
+
         /// Appends the contents of one file to another using chunked reads.
         private func appendFile(from source: URL, to destination: URL) throws {
             let sourceHandle = try FileHandle(forReadingFrom: source)
@@ -804,10 +834,13 @@ public extension HubClient {
 
 }
 
-// MARK: - Progress Delegate
+// MARK: - Download Progress Delegate
 
 #if !canImport(FoundationNetworking)
-    /// Delegate for tracking download progress with throughput calculation.
+    /// Delegate for tracking download progress and completing the download via continuation.
+    ///
+    /// Used with the callback-based `URLSession.downloadTask(with:)` API because the async
+    /// `URLSession.download(for:delegate:)` does not call `URLSessionDownloadDelegate` methods.
     ///
     /// When resuming a partial download, `resumeOffset` accounts for bytes already on disk
     /// so that progress reports the true total (offset + newly downloaded bytes). Without this,
@@ -816,15 +849,23 @@ public extension HubClient {
     ///
     /// Safe to mark @unchecked Sendable: mutable state is only accessed from URLSession's
     /// delegate queue, which serializes all callbacks.
-    private final class DownloadProgressDelegate: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {
+    private final class CallbackDownloadDelegate: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {
         private let progress: Progress
         private let resumeOffset: Int64
         private let startTime: CFAbsoluteTime
+        private let continuation: CheckedContinuation<(URL, URLResponse), Error>
+        var task: URLSessionDownloadTask?
+        private var hasResumed = false
 
-        init(progress: Progress, resumeOffset: Int64 = 0) {
+        init(
+            progress: Progress,
+            resumeOffset: Int64,
+            continuation: CheckedContinuation<(URL, URLResponse), Error>
+        ) {
             self.progress = progress
             self.resumeOffset = resumeOffset
             self.startTime = CFAbsoluteTimeGetCurrent()
+            self.continuation = continuation
         }
 
         func urlSession(
@@ -837,7 +878,7 @@ public extension HubClient {
             progress.totalUnitCount = resumeOffset + totalBytesExpectedToWrite
             progress.completedUnitCount = resumeOffset + totalBytesWritten
 
-            let elapsed = Date().timeIntervalSinceReferenceDate - startTime
+            let elapsed = CFAbsoluteTimeGetCurrent() - startTime
             if elapsed > 0 {
                 let bytesPerSecond = Double(totalBytesWritten) / elapsed
                 progress.setUserInfoObject(bytesPerSecond, forKey: .throughputKey)
@@ -846,10 +887,35 @@ public extension HubClient {
 
         func urlSession(
             _: URLSession,
-            downloadTask _: URLSessionDownloadTask,
-            didFinishDownloadingTo _: URL
+            downloadTask: URLSessionDownloadTask,
+            didFinishDownloadingTo location: URL
         ) {
-            // File handling is done in the async/await layer
+            guard !hasResumed else { return }
+            hasResumed = true
+
+            guard let response = downloadTask.response else {
+                continuation.resume(throwing: URLError(.badServerResponse))
+                return
+            }
+
+            // Copy to a new temp location since the original will be deleted
+            let newTempURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent(UUID().uuidString)
+            do {
+                try FileManager.default.copyItem(at: location, to: newTempURL)
+                continuation.resume(returning: (newTempURL, response))
+            } catch {
+                continuation.resume(throwing: error)
+            }
+        }
+
+        func urlSession(_: URLSession, task _: URLSessionTask, didCompleteWithError error: Error?) {
+            guard !hasResumed else { return }
+            hasResumed = true
+
+            if let error {
+                continuation.resume(throwing: error)
+            }
         }
     }
 #endif
@@ -1466,6 +1532,13 @@ private extension HubClient {
             let locksDir = cache.locksDirectory(repo: repo, kind: kind)
             let lockPath = locksDir.appendingPathComponent(normalizedEtag)
             let lock = await FileLock(lockPath: lockPath.appendingPathExtension("lock"))
+            var xetProgressHandler: (@Sendable (DownloadProgress) -> Void)?
+            if let progress {
+                xetProgressHandler = { xetProgress in
+                    progress.totalUnitCount = xetProgress.totalBytes
+                    progress.completedUnitCount = xetProgress.bytesWritten
+                }
+            }
             try await lock.withLock {
                 // Double-check after acquiring lock
                 let stillNeeded =
@@ -1484,7 +1557,11 @@ private extension HubClient {
                         refreshURL: xetRefreshURL(for: repo, kind: kind, revision: revision),
                         hubToken: try? await httpClient.tokenProvider.getToken()
                     ) { downloader in
-                        try await downloader.download(xetInfo.fileID, to: incompletePath)
+                        try await downloader.download(
+                            xetInfo.fileID,
+                            to: incompletePath,
+                            progressHandler: xetProgressHandler
+                        )
                     }
 
                     try validateDownloadedFileSize(
@@ -1506,9 +1583,6 @@ private extension HubClient {
             repoPath: repoPath,
             etag: normalizedEtag
         )
-
-        progress?.totalUnitCount = 100
-        progress?.completedUnitCount = 100
 
         return result
     }
