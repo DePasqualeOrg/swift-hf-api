@@ -1,6 +1,23 @@
 {
-  "originHash" : "7bee394da9bba3c03d51e52e4944c1cb9a7ed2aa07eaa97e9eba8021c4a1c191",
+  "originHash" : "a597ec1838c694806f9a27441afe7a2829d3337a3f5e79e2eba4750ecea5efdd",
   "pins" : [
+    {
+      "identity" : "mlx-swift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/ml-explore/mlx-swift",
+      "state" : {
+        "revision" : "61b9e011e09a62b489f6bd647958f1555bdf2896",
+        "version" : "0.31.3"
+      }
+    },
+    {
+      "identity" : "mlx-swift-lm",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/ml-explore/mlx-swift-lm.git",
+      "state" : {
+        "revision" : "8c9dd6391139242261bcf27d253c326f9cf2d567"
+      }
+    },
     {
       "identity" : "swift-asn1",
       "kind" : "remoteSourceControl",
@@ -29,12 +46,30 @@
       }
     },
     {
+      "identity" : "swift-numerics",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-numerics",
+      "state" : {
+        "revision" : "0c0290ff6b24942dadb83a929ffaaa1481df04a2",
+        "version" : "1.1.1"
+      }
+    },
+    {
       "identity" : "swift-sse",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/DePasqualeOrg/swift-sse",
       "state" : {
         "revision" : "c8e3f1a5d4cdf708c891bae1f2a975519627b65c",
         "version" : "0.1.0"
+      }
+    },
+    {
+      "identity" : "swift-syntax",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/swiftlang/swift-syntax.git",
+      "state" : {
+        "revision" : "0687f71944021d616d34d922343dcef086855920",
+        "version" : "600.0.1"
       }
     },
     {
