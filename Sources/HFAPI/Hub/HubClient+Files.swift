@@ -740,6 +740,10 @@ public extension HubClient {
                     (tempURL, response) = try await session.download(for: resumeRequest)
                 }
 
+                // URLSession writes the response body to a temp file but does not delete it.
+                // Clean up here whether we consumed it via moveItem/appendFile or threw.
+                defer { try? fileManager.removeItem(at: tempURL) }
+
                 guard let httpResponse = response as? HTTPURLResponse else {
                     throw HTTPClientError.unexpectedError("Invalid HTTP response")
                 }
