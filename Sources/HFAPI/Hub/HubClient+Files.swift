@@ -1126,7 +1126,7 @@ public extension HubClient {
             kind: kind,
             commit: commit,
             matching: globs
-        )
+        )?.snapshotPath
     }
 }
 
@@ -1209,7 +1209,7 @@ public extension HubClient {
         // We improve on this by caching the API response after the first download and
         // verifying each file's presence in the snapshot on subsequent calls.
         if isCommitHash(revision),
-            let snapshotPath = verifiedSnapshotPath(
+            let verified = verifiedSnapshotPath(
                 cache: cache,
                 repo: repo,
                 kind: kind,
@@ -1217,11 +1217,21 @@ public extension HubClient {
                 matching: globs
             )
         {
-            let totalProgress = Progress(totalUnitCount: 1)
-            totalProgress.completedUnitCount = 1
+            // Cache hit: nothing is actually downloaded, but we report the final state of
+            // a logically complete download, so consumers see consistent metadata between
+            // this path and the active-download path below.
+            let totalBytes = verified.entries.reduce(Int64(0)) { $0 + Int64($1.size ?? 1) }
+            let totalProgress = Progress(totalUnitCount: totalBytes)
+            totalProgress.kind = .file
+            #if !canImport(FoundationNetworking)
+                totalProgress.fileOperationKind = .downloading
+                totalProgress.fileTotalCount = verified.entries.count
+                totalProgress.fileCompletedCount = verified.entries.count
+            #endif
+            totalProgress.completedUnitCount = totalProgress.totalUnitCount
             progressHandler?(totalProgress)
             return try copySnapshotToLocalDirectoryIfNeeded(
-                from: snapshotPath,
+                from: verified.snapshotPath,
                 localDirectory: destination
             )
         }
@@ -1267,6 +1277,8 @@ public extension HubClient {
         totalProgress.kind = .file
         #if !canImport(FoundationNetworking)
             totalProgress.fileOperationKind = .downloading
+            totalProgress.fileTotalCount = entries.count
+            totalProgress.fileCompletedCount = 0
         #endif
         let startTime = Date().timeIntervalSinceReferenceDate
         progressHandler?(totalProgress)
@@ -1289,13 +1301,28 @@ public extension HubClient {
 
         // Parallel downloads with concurrency limiting
         try await withThrowingTaskGroup(of: Void.self) { group in
+            let concurrencyLimit = max(1, maxConcurrent)
             var activeCount = 0
+            var completedFileCount = 0
+
+            // Increments fileCompletedCount as each per-file task finishes. The task-group
+            // consumer loop is serial, so we update from a single context – no atomicity
+            // dance needed. Only successful files are counted: if a child task throws,
+            // its completion is never recorded, and fileCompletedCount stops short of
+            // entries.count.
+            func recordFileCompletion() {
+                completedFileCount += 1
+                #if !canImport(FoundationNetworking)
+                    totalProgress.fileCompletedCount = completedFileCount
+                #endif
+                progressHandler?(totalProgress)
+            }
 
             for entry in entries {
-                while activeCount >= maxConcurrent {
-                    try await group.next()
+                while activeCount >= concurrencyLimit {
+                    guard try await group.next() != nil else { break }
                     activeCount -= 1
-                    progressHandler?(totalProgress)
+                    recordFileCompletion()
                 }
 
                 if Task.isCancelled {
@@ -1319,7 +1346,7 @@ public extension HubClient {
             }
 
             for try await _ in group {
-                progressHandler?(totalProgress)
+                recordFileCompletion()
             }
         }
 
@@ -1957,14 +1984,16 @@ private func loadCachedRepoInfo(
 /// Checks whether all files matching the given globs are present in the snapshot directory,
 /// using cached repo info to know the complete file list for the commit.
 ///
-/// Returns the snapshot path if all matching files are present, `nil` otherwise.
+/// Returns the snapshot path and the verified file entries if all matching files are
+/// present, `nil` otherwise. Returning the entries lets callers report progress with the
+/// actual byte total instead of a placeholder.
 private func verifiedSnapshotPath(
     cache: HubCache,
     repo: Repo.ID,
     kind: Repo.Kind,
     commit: String,
     matching globs: [String]
-) -> URL? {
+) -> (snapshotPath: URL, entries: [Git.TreeEntry])? {
     let snapshotDir = cache.snapshotsDirectory(repo: repo, kind: kind)
         .appendingPathComponent(commit)
 
@@ -2001,7 +2030,7 @@ private func verifiedSnapshotPath(
         return true
     }
 
-    return allPresent ? snapshotDir : nil
+    return allPresent ? (snapshotDir, entries) : nil
 }
 
 /// Repository info with commit hash and file list.
