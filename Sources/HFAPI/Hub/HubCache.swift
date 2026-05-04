@@ -703,6 +703,9 @@ public enum HubCacheError: Error, LocalizedError {
     /// Downloaded file size does not match the expected size from the server.
     case fileSizeMismatch(expected: Int, actual: Int)
 
+    /// An atomic copy into the local directory failed.
+    case atomicCopyFailed(source: URL, destination: URL, reason: String)
+
     public var errorDescription: String? {
         switch self {
         case .invalidPathComponent(let component):
@@ -721,6 +724,9 @@ public enum HubCacheError: Error, LocalizedError {
         case .fileSizeMismatch(let expected, let actual):
             return
                 "Downloaded file size (\(actual) bytes) does not match expected size (\(expected) bytes). The file may be corrupted."
+        case .atomicCopyFailed(let source, let destination, let reason):
+            return
+                "Failed to copy '\(source.lastPathComponent)' to '\(destination.path)': \(reason)"
         }
     }
 }
