@@ -15,11 +15,12 @@ import Foundation
 
 import Xet
 
-private let xetMinimumFileSizeBytes = 16 * 1024 * 1024  // 16MiB
-
 /// Controls which transport is used for file downloads.
 public enum FileDownloadTransport: Hashable, CaseIterable, Sendable {
-    /// Automatically select the best transport (Xet for large files, LFS otherwise).
+    /// Automatically select the best transport. Xet is used when the server's
+    /// HEAD response advertises Xet via `X-Xet-Hash` together with either a
+    /// `Link` header containing `rel="xet-auth"` or an `X-Xet-Refresh-Route`
+    /// header; otherwise the LFS path is used.
     case automatic
 
     /// Force classic LFS download.
@@ -34,20 +35,6 @@ public enum FileDownloadTransport: Hashable, CaseIterable, Sendable {
             return true
         case .lfs:
             return false
-        }
-    }
-
-    func shouldUseXet(fileSizeBytes: Int?, minimumFileSizeBytes: Int?) -> Bool {
-        switch self {
-        case .xet:
-            return true
-        case .lfs:
-            return false
-        case .automatic:
-            guard let minimumFileSizeBytes, let fileSizeBytes else {
-                return true
-            }
-            return fileSizeBytes >= minimumFileSizeBytes
         }
     }
 }
@@ -235,7 +222,12 @@ private enum DownloadConstants {
 }
 
 public extension HubClient {
-    /// Download file data using URLSession.dataTask
+    /// Download file data using URLSession.dataTask.
+    ///
+    /// With `transport == .automatic`, the Xet path is attempted whenever the
+    /// Hub's HEAD response advertises Xet support; otherwise the LFS path is
+    /// used. `transport == .xet` forces the Xet path and propagates errors;
+    /// `transport == .lfs` skips Xet entirely.
     /// - Parameters:
     ///   - repoPath: Path to file in repository
     ///   - repo: Repository identifier
@@ -269,8 +261,7 @@ public extension HubClient {
                     repoPath: repoPath,
                     repo: repo,
                     kind: kind,
-                    revision: revision,
-                    transport: transport
+                    revision: revision
                 ) {
                     return data
                 }
@@ -282,13 +273,13 @@ public extension HubClient {
         }
 
         // Fallback to existing LFS download method
-        let endpoint = endpoint.pathComponent
-        let url = httpClient.host
-            .appending(path: repo.namespace)
-            .appending(path: repo.name)
-            .appending(path: endpoint)
-            .appending(component: revision)
-            .appending(path: repoPath)
+        let url = fileURL(
+            repoPath: repoPath,
+            repo: repo,
+            kind: kind,
+            revision: revision,
+            endpoint: endpoint
+        )
 
         // Fetch metadata first (without following redirects) to get X-Linked-Etag for LFS/xet files
         let metadata = try await fetchFileMetadata(url: url)
@@ -325,8 +316,14 @@ public extension HubClient {
     /// Returns the snapshot symlink path, which resolves through to the blob.
     /// If the file is already cached, returns immediately with no network calls.
     ///
+    /// With `transport == .automatic`, the Xet path is attempted whenever the
+    /// Hub's HEAD response advertises Xet support; otherwise the LFS path is
+    /// used. `transport == .xet` forces the Xet path and propagates errors;
+    /// `transport == .lfs` skips Xet entirely.
+    ///
     /// If a previous download was interrupted, this method automatically resumes
-    /// from where it left off using HTTP Range headers.
+    /// from where it left off using HTTP Range headers (LFS) or swift-xet's
+    /// byte-range append API (Xet).
     ///
     /// - Parameters:
     ///   - repoPath: Path to file in repository
@@ -407,7 +404,7 @@ public extension HubClient {
                     kind: kind,
                     revision: revision,
                     progress: progress,
-                    transport: transport
+                    expectedSize: expectedSize
                 ) {
                     return try copyToLocalDirectoryIfNeeded(
                         downloaded,
@@ -423,13 +420,13 @@ public extension HubClient {
         }
 
         // Fallback to existing LFS download method
-        let endpoint = endpoint.pathComponent
-        let url = httpClient.host
-            .appending(path: repo.namespace)
-            .appending(path: repo.name)
-            .appending(path: endpoint)
-            .appending(component: revision)
-            .appending(path: repoPath)
+        let url = fileURL(
+            repoPath: repoPath,
+            repo: repo,
+            kind: kind,
+            revision: revision,
+            endpoint: endpoint
+        )
 
         // Fetch metadata first (without following redirects) to get X-Linked-Etag for LFS/xet files
         let metadata = try await fetchFileMetadata(url: url)
@@ -516,7 +513,7 @@ public extension HubClient {
         // Acquire lock to prevent parallel downloads of the same blob
         let locksDir = cache.locksDirectory(repo: repo, kind: kind)
         let lockPath = locksDir.appendingPathComponent(normalizedEtag)
-        let lock = await FileLock(lockPath: lockPath.appendingPathExtension("lock"))
+        let lock = await FileLock(lockPath: lockPath.appendingPathExtension("lock"), maxRetries: nil)
         return try await lock.withLock {
             // Double-check blob doesn't exist after acquiring lock
             if fileManager.fileExists(atPath: blobPath.path) {
@@ -626,6 +623,28 @@ public extension HubClient {
             .appendingPathComponent(repoPath)
     }
 
+    private func fileURL(
+        repoPath: String,
+        repo: Repo.ID,
+        kind: Repo.Kind,
+        revision: String,
+        endpoint: FileDownloadEndpoint
+    ) -> URL {
+        var url = httpClient.host
+        // Models have no path prefix on resolve URLs; only datasets and spaces
+        // are pluralized. Matches Python's REPO_TYPES_URL_PREFIXES.
+        if kind != .model {
+            url = url.appending(path: kind.pluralized)
+        }
+        return
+            url
+            .appending(path: repo.namespace)
+            .appending(path: repo.name)
+            .appending(path: endpoint.pathComponent)
+            .appending(component: revision)
+            .appending(path: repoPath)
+    }
+
     /// Download a file to the cache using a tree entry (uses file size for transport selection).
     ///
     /// Returns the snapshot symlink path, which resolves through to the blob.
@@ -639,23 +658,6 @@ public extension HubClient {
         progress: Progress? = nil,
         transport: FileDownloadTransport = .automatic
     ) async throws -> URL {
-        if transport == .automatic,
-            let fileSizeBytes = entry.size,
-            fileSizeBytes < xetMinimumFileSizeBytes
-        {
-            return try await downloadFile(
-                at: entry.path,
-                from: repo,
-                kind: kind,
-                revision: revision,
-                endpoint: endpoint,
-                cachePolicy: cachePolicy,
-                progress: progress,
-                transport: .lfs,
-                expectedSize: entry.size
-            )
-        }
-
         return try await downloadFile(
             at: entry.path,
             from: repo,
@@ -1440,11 +1442,14 @@ public extension HubClient {
             at: localPath.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
-        try? fileManager.removeItem(at: localPath)
         // Resolve symlinks because snapshot entries are relative symlinks to blobs
         // (e.g., ../../blobs/etag). copyItem preserves symlinks, unlike Python's
         // shutil.copyfile which follows them, so we must resolve first.
-        try fileManager.copyItem(at: cachedPath.resolvingSymlinksInPath(), to: localPath)
+        try Self.atomicallyCopyItem(
+            from: cachedPath.resolvingSymlinksInPath(),
+            to: localPath,
+            fileManager: fileManager
+        )
         return localPath
     }
 
@@ -1469,6 +1474,15 @@ public extension HubClient {
         }
 
         for case let fileURL as URL in enumerator {
+            // Skip directories: the enumerator yields directories themselves,
+            // and copying a directory recursively would duplicate work — the
+            // enumerator then descends into the same directory and copies each
+            // child file again. A transient resource-read failure shouldn't
+            // abort the whole snapshot; a non-regular destination will surface
+            // through `atomicallyCopyItem` below.
+            let isRegular = (try? fileURL.resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile ?? false
+            guard isRegular else { continue }
+
             let snapshotComponents = snapshotPath.standardized.pathComponents
             let fileComponents = fileURL.standardized.pathComponents
             let relativeComponents = fileComponents.dropFirst(snapshotComponents.count)
@@ -1477,12 +1491,50 @@ public extension HubClient {
                 at: destURL.deletingLastPathComponent(),
                 withIntermediateDirectories: true
             )
-            try? fileManager.removeItem(at: destURL)
             // See comment in copyToLocalDirectoryIfNeeded above
-            try fileManager.copyItem(at: fileURL.resolvingSymlinksInPath(), to: destURL)
+            try Self.atomicallyCopyItem(
+                from: fileURL.resolvingSymlinksInPath(),
+                to: destURL,
+                fileManager: fileManager
+            )
         }
 
         return localDirectory
+    }
+
+    /// Copies `source` into `destination` atomically with respect to concurrent
+    /// callers writing to the same destination. Foundation's `moveItem(at:to:)`
+    /// pre-checks destination existence and fails if a file appeared between
+    /// the check and the rename, so it can't safely overwrite. POSIX `rename(2)`
+    /// is atomic on the same volume and overwrites silently, so we copy to a
+    /// unique temp path inside the destination's parent and then swap it in.
+    private static func atomicallyCopyItem(
+        from source: URL,
+        to destination: URL,
+        fileManager: FileManager
+    ) throws {
+        let tempURL =
+            destination
+            .deletingLastPathComponent()
+            .appendingPathComponent(".\(destination.lastPathComponent).tmp.\(UUID().uuidString)")
+        try fileManager.copyItem(at: source, to: tempURL)
+        var renameErrno: Int32 = 0
+        let result = tempURL.withUnsafeFileSystemRepresentation { src -> Int32 in
+            destination.withUnsafeFileSystemRepresentation { dst -> Int32 in
+                guard let src, let dst else { return -1 }
+                let ret = rename(src, dst)
+                if ret != 0 { renameErrno = errno }
+                return ret
+            }
+        }
+        if result != 0 {
+            try? fileManager.removeItem(at: tempURL)
+            throw HubCacheError.atomicCopyFailed(
+                source: source,
+                destination: destination,
+                reason: String(cString: strerror(renameErrno))
+            )
+        }
     }
 }
 
@@ -1492,6 +1544,8 @@ public extension HubClient {
 /// with standard cache metadata (etag, commit hash) from the same response.
 private struct XetFileInfo {
     let fileID: String
+    let refreshURL: URL
+    let requestHeaders: [String: String]
     let etag: String?
     let commitHash: String?
     let size: Int?
@@ -1503,26 +1557,50 @@ private extension HubClient {
         repoPath: String,
         repo: Repo.ID,
         kind: Repo.Kind,
-        revision: String,
-        transport: FileDownloadTransport
+        revision: String
     ) async throws -> Data? {
         guard
             let xetInfo = try await fetchXetFileInfo(
                 repoPath: repoPath,
                 repo: repo,
-                revision: revision,
-                transport: transport
+                kind: kind,
+                revision: revision
             )
         else {
             return nil
         }
 
-        return try await Xet.withDownloader(
-            refreshURL: xetRefreshURL(for: repo, kind: kind, revision: revision),
-            hubToken: try? await httpClient.tokenProvider.getToken()
+        let data = try await Xet.withDownloader(
+            refreshURL: xetInfo.refreshURL,
+            hubToken: try? await httpClient.tokenProvider.getToken(),
+            requestHeaders: xetInfo.requestHeaders
         ) { downloader in
-            try await downloader.data(for: xetInfo.fileID)
+            let data = try await downloader.data(for: xetInfo.fileID)
+            if let expectedSize = xetInfo.size, data.count != expectedSize {
+                throw HubCacheError.fileSizeMismatch(
+                    expected: expectedSize,
+                    actual: data.count
+                )
+            }
+            return data
         }
+
+        // Populate the cache so subsequent downloadFile/downloadContentsOfFile
+        // calls hit the blob instead of refetching. Mirrors the LFS Data path
+        // in downloadContentsOfFile.
+        if let etag = xetInfo.etag, let commitHash = xetInfo.commitHash {
+            try? await cache.storeData(
+                data,
+                repo: repo,
+                kind: kind,
+                revision: commitHash,
+                filename: repoPath,
+                etag: etag,
+                ref: revision != commitHash ? revision : nil
+            )
+        }
+
+        return data
     }
 
     /// Downloads a file using Xet's content-addressable storage system.
@@ -1537,14 +1615,14 @@ private extension HubClient {
         kind: Repo.Kind,
         revision: String,
         progress: Progress?,
-        transport: FileDownloadTransport
+        expectedSize callerExpectedSize: Int? = nil
     ) async throws -> URL? {
         guard
             let xetInfo = try await fetchXetFileInfo(
                 repoPath: repoPath,
                 repo: repo,
-                revision: revision,
-                transport: transport
+                kind: kind,
+                revision: revision
             )
         else {
             return nil
@@ -1562,7 +1640,7 @@ private extension HubClient {
         let blobPath = blobsDir.appendingPathComponent(normalizedEtag)
 
         // Require a known file size for integrity validation (see downloadWithCacheCoordination).
-        guard let expectedSize = xetInfo.size else {
+        guard let expectedSize = xetInfo.size ?? callerExpectedSize else {
             throw HubCacheError.missingFileSize(repoPath)
         }
         let needsDownload =
@@ -1572,14 +1650,7 @@ private extension HubClient {
         if needsDownload {
             let locksDir = cache.locksDirectory(repo: repo, kind: kind)
             let lockPath = locksDir.appendingPathComponent(normalizedEtag)
-            let lock = await FileLock(lockPath: lockPath.appendingPathExtension("lock"))
-            var xetProgressHandler: (@Sendable (DownloadProgress) -> Void)?
-            if let progress {
-                xetProgressHandler = { xetProgress in
-                    progress.totalUnitCount = xetProgress.totalBytes
-                    progress.completedUnitCount = xetProgress.bytesWritten
-                }
-            }
+            let lock = await FileLock(lockPath: lockPath.appendingPathExtension("lock"), maxRetries: nil)
             try await lock.withLock {
                 // Double-check after acquiring lock
                 let stillNeeded =
@@ -1589,21 +1660,16 @@ private extension HubClient {
                     try? fileManager.removeItem(at: blobPath)
                     try fileManager.createDirectory(at: blobsDir, withIntermediateDirectories: true)
 
-                    // Download to .incomplete, validate, then atomically move
                     let incompletePath = blobsDir.appendingPathComponent(
                         "\(normalizedEtag).incomplete"
                     )
-                    try? fileManager.removeItem(at: incompletePath)
-                    _ = try await Xet.withDownloader(
-                        refreshURL: xetRefreshURL(for: repo, kind: kind, revision: revision),
-                        hubToken: try? await httpClient.tokenProvider.getToken()
-                    ) { downloader in
-                        try await downloader.download(
-                            xetInfo.fileID,
-                            to: incompletePath,
-                            progressHandler: xetProgressHandler
-                        )
-                    }
+
+                    try await downloadXetWithResume(
+                        xetInfo: xetInfo,
+                        incompletePath: incompletePath,
+                        expectedSize: expectedSize,
+                        progress: progress
+                    )
 
                     try validateDownloadedFileSize(
                         at: incompletePath,
@@ -1628,20 +1694,98 @@ private extension HubClient {
         return result
     }
 
+    /// Downloads a Xet file to `incompletePath`, resuming from any existing
+    /// partial bytes. Mirrors the LFS resume flow in `downloadToCacheApple`.
+    /// On `appendSizeMismatch` (the staged file no longer matches the requested
+    /// resume offset), the partial file is discarded and the download retries
+    /// once from byte 0.
+    private func downloadXetWithResume(
+        xetInfo: XetFileInfo,
+        incompletePath: URL,
+        expectedSize: Int,
+        progress: Progress?
+    ) async throws {
+        let fileManager = FileManager.default
+        let xetProgressHandler: (@Sendable (DownloadProgress) -> Void)? =
+            if let progress {
+                { xetProgress in
+                    progress.totalUnitCount = xetProgress.totalBytes
+                    progress.completedUnitCount = xetProgress.bytesWritten
+                }
+            } else {
+                nil
+            }
+
+        let totalSize = UInt64(expectedSize)
+        let hubToken = try? await httpClient.tokenProvider.getToken()
+
+        func resumeOffset() -> UInt64 {
+            guard fileManager.fileExists(atPath: incompletePath.path),
+                let attrs = try? fileManager.attributesOfItem(atPath: incompletePath.path),
+                let size = attrs[.size] as? Int64,
+                size > 0,
+                UInt64(size) < totalSize
+            else {
+                try? fileManager.removeItem(at: incompletePath)
+                return 0
+            }
+            return UInt64(size)
+        }
+
+        func attempt(resumingFrom resumeSize: UInt64) async throws {
+            _ = try await Xet.withDownloader(
+                refreshURL: xetInfo.refreshURL,
+                hubToken: hubToken,
+                requestHeaders: xetInfo.requestHeaders
+            ) { downloader in
+                if resumeSize > 0 {
+                    try await downloader.download(
+                        xetInfo.fileID,
+                        byteRange: resumeSize ..< totalSize,
+                        to: incompletePath,
+                        appendingToExistingFile: true,
+                        progressHandler: xetProgressHandler
+                    )
+                } else {
+                    try await downloader.download(
+                        xetInfo.fileID,
+                        to: incompletePath,
+                        progressHandler: xetProgressHandler
+                    )
+                }
+            }
+        }
+
+        do {
+            try await attempt(resumingFrom: resumeOffset())
+        } catch XetDownloaderError.appendSizeMismatch {
+            try? fileManager.removeItem(at: incompletePath)
+            try await attempt(resumingFrom: 0)
+        }
+    }
+
     func fetchXetFileInfo(
         repoPath: String,
         repo: Repo.ID,
-        revision: String,
-        transport: FileDownloadTransport
+        kind: Repo.Kind,
+        revision: String
     ) async throws -> XetFileInfo? {
-        let urlPath = "/\(repo)/resolve/\(revision)/\(repoPath)"
-        var request = try await httpClient.createRequest(.head, urlPath)
-        request.cachePolicy = .reloadIgnoringLocalCacheData
-
-        let (_, response) = try await session.data(
-            for: request,
-            delegate: NoRedirectDelegate()
+        let url = fileURL(
+            repoPath: repoPath,
+            repo: repo,
+            kind: kind,
+            revision: revision,
+            endpoint: .resolve
         )
+        var request = try await httpClient.createRequest(.head, url: url)
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        request.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
+        // Capture after setting Accept-Encoding so swift-xet forwards the same
+        // header set to the Hub token-refresh endpoint, matching Python's
+        // xet_get which propagates hf_headers (including Accept-Encoding).
+        let requestHeaders = request.allHTTPHeaderFields ?? [:]
+
+        let (_, response) = try await metadataSession.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
             return nil
         }
@@ -1652,18 +1796,16 @@ private extension HubClient {
             return nil
         }
 
+        guard let refreshURL = xetRefreshURL(from: httpResponse) else {
+            return nil
+        }
+
         let rawSize =
             httpResponse.value(forHTTPHeaderField: "X-Linked-Size")
             ?? ((200 ..< 300).contains(httpResponse.statusCode)
                 ? httpResponse.value(forHTTPHeaderField: "Content-Length")
                 : nil)
         let fileSizeBytes = rawSize.flatMap(Int.init)
-        if !transport.shouldUseXet(
-            fileSizeBytes: fileSizeBytes,
-            minimumFileSizeBytes: xetMinimumFileSizeBytes
-        ) {
-            return nil
-        }
 
         guard isValidHash(fileID, pattern: sha256Pattern) else {
             return nil
@@ -1677,29 +1819,194 @@ private extension HubClient {
 
         return XetFileInfo(
             fileID: fileID,
+            refreshURL: refreshURL,
+            requestHeaders: requestHeaders,
             etag: etag.map { HubCache.normalizeEtag($0) },
             commitHash: commitHash,
             size: fileSizeBytes
         )
     }
 
-    func xetRefreshURL(for repo: Repo.ID, kind: Repo.Kind, revision: String) -> URL {
-        let url = httpClient.host.appendingPathComponent(
-            "api/\(kind.pluralized)/\(repo)/xet-read-token/\(revision)"
-        )
-        return url
-    }
-}
+    func xetRefreshURL(from response: HTTPURLResponse) -> URL? {
+        if let linkHeader = response.value(forHTTPHeaderField: "Link"),
+            let linkURL = xetAuthURL(from: linkHeader)
+        {
+            return normalizeXetRefreshURL(linkURL)
+        }
 
-private final class NoRedirectDelegate: NSObject, URLSessionTaskDelegate {
-    func urlSession(
-        _: URLSession,
-        task _: URLSessionTask,
-        willPerformHTTPRedirection _: HTTPURLResponse,
-        newRequest _: URLRequest,
-        completionHandler: @escaping (URLRequest?) -> Void
-    ) {
-        completionHandler(nil)
+        if let refreshRoute = response.value(forHTTPHeaderField: "X-Xet-Refresh-Route") {
+            return normalizeXetRefreshURL(refreshRoute)
+        }
+
+        return nil
+    }
+
+    /// Extracts the URL of the `xet-auth` link from an RFC 8288 `Link` header.
+    ///
+    /// Tolerates parameter ordering, optional quoting, mixed casing of parameter
+    /// names, multi-token `rel` values, and characters that would confuse a naive
+    /// comma/semicolon split (commas inside `<...>` or inside quoted parameter
+    /// values).
+    ///
+    /// When multiple links carry `rel="xet-auth"`, returns the URL of the last
+    /// one. This matches `httpx.Response.links`, which keys a dict by `rel` so
+    /// later entries overwrite earlier ones. RFC 8288 does not specify a tie
+    /// breaker; the Hub never sends more than one xet-auth link in practice.
+    ///
+    /// `rel` matching uses RFC 8288 token semantics: a link with
+    /// `rel="xet-auth other"` matches. This is more permissive than Python's
+    /// `httpx`, which keys by the full `rel` string and would only match an
+    /// exact `rel="xet-auth"`. The two behaviors agree on the single-token
+    /// case the Hub actually emits.
+    func xetAuthURL(from linkHeader: String) -> String? {
+        var match: String?
+        for link in Self.parseLinkHeader(linkHeader) {
+            let hasXetAuth = link.parameters.contains { name, value in
+                name.lowercased() == "rel"
+                    && value.split(whereSeparator: \.isWhitespace)
+                        .contains { $0.lowercased() == "xet-auth" }
+            }
+            if hasXetAuth {
+                match = link.url
+            }
+        }
+        return match
+    }
+
+    private struct LinkHeaderEntry {
+        let url: String
+        let parameters: [(name: String, value: String)]
+    }
+
+    /// Parses an RFC 8288 `Link` header into individual `<url>; param=value`
+    /// entries. Splits only at top-level delimiters (outside of `<...>` and
+    /// outside of quoted strings).
+    private static func parseLinkHeader(_ header: String) -> [LinkHeaderEntry] {
+        var entries: [LinkHeaderEntry] = []
+        var current = ""
+        var inAngleBrackets = false
+        var inQuotes = false
+        var escaped = false
+
+        func flush() {
+            let trimmed = current.trimmingCharacters(in: .whitespacesAndNewlines)
+            current = ""
+            if trimmed.isEmpty { return }
+            if let entry = parseLinkEntry(trimmed) {
+                entries.append(entry)
+            }
+        }
+
+        for char in header {
+            if escaped {
+                current.append(char)
+                escaped = false
+                continue
+            }
+            if inQuotes {
+                if char == "\\" {
+                    escaped = true
+                } else if char == "\"" {
+                    inQuotes = false
+                }
+                current.append(char)
+                continue
+            }
+            if inAngleBrackets {
+                if char == ">" { inAngleBrackets = false }
+                current.append(char)
+                continue
+            }
+            switch char {
+            case "<": inAngleBrackets = true; current.append(char)
+            case "\"": inQuotes = true; current.append(char)
+            case ",": flush()
+            default: current.append(char)
+            }
+        }
+        flush()
+        return entries
+    }
+
+    /// Parses a single link entry of the form `<url>; name=value; name="value"`.
+    private static func parseLinkEntry(_ entry: String) -> LinkHeaderEntry? {
+        var segments: [String] = []
+        var current = ""
+        var inAngleBrackets = false
+        var inQuotes = false
+        var escaped = false
+        for char in entry {
+            if escaped {
+                current.append(char)
+                escaped = false
+                continue
+            }
+            if inQuotes {
+                if char == "\\" {
+                    escaped = true
+                } else if char == "\"" {
+                    inQuotes = false
+                }
+                current.append(char)
+                continue
+            }
+            if inAngleBrackets {
+                if char == ">" { inAngleBrackets = false }
+                current.append(char)
+                continue
+            }
+            switch char {
+            case "<": inAngleBrackets = true; current.append(char)
+            case "\"": inQuotes = true; current.append(char)
+            case ";":
+                segments.append(current)
+                current = ""
+            default: current.append(char)
+            }
+        }
+        segments.append(current)
+
+        guard let first = segments.first else { return nil }
+        let trimmedURL = first.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmedURL.hasPrefix("<"), trimmedURL.hasSuffix(">") else { return nil }
+        let url = String(trimmedURL.dropFirst().dropLast())
+
+        let parameters: [(name: String, value: String)] = segments.dropFirst().compactMap { segment in
+            let trimmed = segment.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty, let equals = trimmed.firstIndex(of: "=") else { return nil }
+            let name = trimmed[..<equals].trimmingCharacters(in: .whitespacesAndNewlines)
+            var value = trimmed[trimmed.index(after: equals)...].trimmingCharacters(in: .whitespacesAndNewlines)
+            if value.hasPrefix("\""), value.hasSuffix("\""), value.count >= 2 {
+                value = String(value.dropFirst().dropLast())
+            }
+            return (name: name, value: value)
+        }
+
+        return LinkHeaderEntry(url: url, parameters: parameters)
+    }
+
+    func normalizeXetRefreshURL(_ route: String) -> URL? {
+        let trimmed = route.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        // Match Python's huggingface_hub: replace just the host prefix
+        // (`https://huggingface.co`) with the configured endpoint, preserving
+        // any sub-path on that endpoint (e.g. `https://mirror.example/hf`).
+        // The trailing slash on the matched prefix prevents accidental host
+        // swaps for prefixes like `https://huggingface.cooperative.example`.
+        let huggingFaceHome = "https://huggingface.co/"
+        if trimmed.hasPrefix(huggingFaceHome) {
+            let hostStripped = String(huggingFaceHome.dropLast())  // "https://huggingface.co"
+            let endpoint = httpClient.host.absoluteString
+            let endpointStripped = endpoint.hasSuffix("/") ? String(endpoint.dropLast()) : endpoint
+            return URL(string: endpointStripped + trimmed.dropFirst(hostStripped.count))
+        }
+
+        if let url = URL(string: trimmed), url.scheme != nil {
+            return url
+        }
+
+        return URL(string: trimmed, relativeTo: httpClient.host)?.absoluteURL
     }
 }
 
