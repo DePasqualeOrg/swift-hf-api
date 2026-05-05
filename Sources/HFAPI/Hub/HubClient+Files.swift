@@ -1466,7 +1466,7 @@ public extension HubClient {
         guard
             let enumerator = fileManager.enumerator(
                 at: snapshotPath,
-                includingPropertiesForKeys: [.isRegularFileKey],
+                includingPropertiesForKeys: [.isDirectoryKey],
                 options: []
             )
         else {
@@ -1474,14 +1474,17 @@ public extension HubClient {
         }
 
         for case let fileURL as URL in enumerator {
-            // Skip directories: the enumerator yields directories themselves,
-            // and copying a directory recursively would duplicate work — the
-            // enumerator then descends into the same directory and copies each
-            // child file again. A transient resource-read failure shouldn't
-            // abort the whole snapshot; a non-regular destination will surface
-            // through `atomicallyCopyItem` below.
-            let isRegular = (try? fileURL.resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile ?? false
-            guard isRegular else { continue }
+            // Skip directories so we don't double-walk: the enumerator yields
+            // each subdirectory before descending, and `copyItem` would
+            // recursively copy it once, then the enumerator would yield each
+            // child and we'd copy it again. Snapshot entries are normally
+            // symlinks pointing into the blobs directory, and `isDirectoryKey`
+            // uses `lstat` semantics so it correctly reports `false` for those
+            // — we want to copy them. Using `isRegularFileKey` here would also
+            // report `false` for symlinks and skip the entire snapshot, which
+            // is what we actually saw before this check was rewritten.
+            let isDirectory = (try? fileURL.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? false
+            guard !isDirectory else { continue }
 
             let snapshotComponents = snapshotPath.standardized.pathComponents
             let fileComponents = fileURL.standardized.pathComponents
