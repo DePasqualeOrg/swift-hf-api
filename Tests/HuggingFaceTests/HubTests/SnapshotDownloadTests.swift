@@ -147,6 +147,37 @@ private func makeProgressStream() -> (
 
         // MARK: - Cache Tests
 
+        @Test("Download to local directory copies snapshot symlinks")
+        func downloadToLocalDirectoryCopiesSymlinks() async throws {
+            let repoID: Repo.ID = "google-t5/t5-base"
+            let client = createClient()
+            let destination = Self.cacheDirectory.appending(component: "to-local-dir")
+
+            let resultPath = try await client.downloadSnapshot(
+                of: repoID,
+                matching: ["config.json", "generation_config.json"],
+                to: destination
+            )
+
+            #expect(resultPath == destination)
+
+            // Regression guard: snapshot entries are symlinks to blobs, and
+            // earlier code skipped them via an `isRegularFileKey` check that
+            // uses `lstat` semantics on macOS — leaving the destination empty.
+            let configPath = destination.appendingPathComponent("config.json")
+            #expect(FileManager.default.fileExists(atPath: configPath.path))
+            let generationConfigPath = destination.appendingPathComponent("generation_config.json")
+            #expect(FileManager.default.fileExists(atPath: generationConfigPath.path))
+
+            // The copied entries must be real files, not lingering symlinks
+            // pointing back into the cache (which would break callers that
+            // move or delete the destination directory independently).
+            let configAttrs = try FileManager.default.attributesOfItem(atPath: configPath.path)
+            #expect(configAttrs[.type] as? FileAttributeType == .typeRegular)
+            let configBytes = try Data(contentsOf: configPath)
+            #expect(!configBytes.isEmpty)
+        }
+
         @Test("Second download uses cache")
         func secondDownloadUsesCache() async throws {
             let repoID: Repo.ID = "google-t5/t5-base"
