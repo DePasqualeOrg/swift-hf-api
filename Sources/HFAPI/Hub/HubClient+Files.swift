@@ -1526,6 +1526,9 @@ public extension HubClient {
             destination.withUnsafeFileSystemRepresentation { dst -> Int32 in
                 guard let src, let dst else { return -1 }
                 let ret = rename(src, dst)
+                // Capture `errno` before returning out of the closure: any
+                // intervening syscall (including the closure teardown itself)
+                // can clobber the thread-local `errno`.
                 if ret != 0 { renameErrno = errno }
                 return ret
             }

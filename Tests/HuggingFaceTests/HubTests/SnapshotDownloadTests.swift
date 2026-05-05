@@ -735,6 +735,72 @@ private func makeProgressStream() -> (
                     .filter { $0.hasSuffix(".incomplete") }
                 #expect(incompleteFiles.isEmpty, "No incomplete files should remain")
             }
+
+            @Test("Concurrent cache-hit downloads do not race on snapshot entry")
+            func concurrentCacheHitDownloadsDoNotRace() async throws {
+                // Regression: when the blob is already cached, both download paths
+                // skip their FileLock and call `createCacheEntries` →
+                // `createSnapshotSymlink`. A non-atomic `removeItem` +
+                // `createSymbolicLink` sequence would race here, with the loser
+                // falling through to `copyItem(blob, snapshotPath)` and failing
+                // EEXIST. The atomic-rename install path keeps the operation
+                // race-safe.
+                let repoID: Repo.ID = "google-t5/t5-base"
+                let filename = "config.json"
+
+                let cacheDir = Self.cacheDirectory.appending(path: "concurrent-cache-hit")
+                try? FileManager.default.removeItem(at: cacheDir)
+
+                let cache = HubCache(cacheDirectory: cacheDir)
+                let client = HubClient(
+                    host: URL(string: "https://huggingface.co")!,
+                    cache: cache
+                )
+
+                // Prime the cache so the next batch all hit the pre-lock
+                // "blob exists" branch in `downloadWithCacheCoordination` /
+                // `downloadFileWithXet` and race in `createCacheEntries`.
+                let primed = try await client.downloadFile(at: filename, from: repoID)
+                #expect(FileManager.default.fileExists(atPath: primed.path))
+                let primedBytes = try Data(contentsOf: primed)
+                #expect(!primedBytes.isEmpty)
+
+                // Remove the snapshot symlink so each contender has to recreate
+                // it. The blob stays cached, so the contenders all skip the
+                // file-lock fast path.
+                try FileManager.default.removeItem(at: primed)
+
+                let concurrentCount = 16
+                try await withThrowingTaskGroup(of: URL.self) { group in
+                    for _ in 0 ..< concurrentCount {
+                        group.addTask {
+                            try await client.downloadFile(at: filename, from: repoID)
+                        }
+                    }
+                    var results: [URL] = []
+                    for try await result in group {
+                        results.append(result)
+                    }
+                    #expect(results.count == concurrentCount)
+                    let uniquePaths = Set(results.map(\.path))
+                    #expect(uniquePaths.count == 1, "All cache-hit downloads should resolve to the same snapshot path")
+                }
+
+                #expect(FileManager.default.fileExists(atPath: primed.path))
+
+                // The installed entry should still be a symlink: a future
+                // regression that silently fell back to the non-symlink copy
+                // branch would otherwise leave a regular file here, and the
+                // bytes-equal assertion below would still pass.
+                let attrs = try FileManager.default.attributesOfItem(atPath: primed.path)
+                #expect(attrs[.type] as? FileAttributeType == .typeSymbolicLink)
+
+                // Compare bytes against the pre-batch read so a contender
+                // racing in with truncated or partial content fails the test
+                // even when the file isn't empty.
+                let postBytes = try Data(contentsOf: primed)
+                #expect(postBytes == primedBytes, "Snapshot entry should resolve to the original blob bytes")
+            }
         #endif
 
     }
