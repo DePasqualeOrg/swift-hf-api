@@ -391,14 +391,8 @@ public struct HubCache: Sendable {
             )
         }
 
-        // Remove existing snapshot entry if present
-        try? FileManager.default.removeItem(at: snapshotPath)
-
-        // Try to create symlink, fall back to copy
-        let relativeBlobPath = relativePathToBlob(from: snapshotPath, blobName: normalizedEtag)
-        if !createSymlink(at: snapshotPath, pointingTo: relativeBlobPath) {
-            // Symlinks not supported, copy the file instead
-            try FileManager.default.copyItem(at: blobPath, to: snapshotPath)
+        try installSnapshotEntry(at: snapshotPath, pointingToBlob: normalizedEtag) { tempPath in
+            try FileManager.default.copyItem(at: blobPath, to: tempPath)
         }
 
         // Update ref if provided
@@ -472,13 +466,8 @@ public struct HubCache: Sendable {
             )
         }
 
-        // Remove existing snapshot entry if present
-        try? FileManager.default.removeItem(at: snapshotPath)
-
-        // Try to create symlink, fall back to copy
-        let relativeBlobPath = relativePathToBlob(from: snapshotPath, blobName: normalizedEtag)
-        if !createSymlink(at: snapshotPath, pointingTo: relativeBlobPath) {
-            try data.write(to: snapshotPath, options: .atomic)
+        try installSnapshotEntry(at: snapshotPath, pointingToBlob: normalizedEtag) { tempPath in
+            try data.write(to: tempPath, options: .atomic)
         }
 
         // Update ref if provided
@@ -628,15 +617,9 @@ public struct HubCache: Sendable {
             )
         }
 
-        // Remove existing snapshot entry if present
-        try? FileManager.default.removeItem(at: snapshotPath)
-
-        // Create symlink to blob
-        let relativeBlobPath = relativePathToBlob(from: snapshotPath, blobName: normalizedEtag)
-        if !createSymlink(at: snapshotPath, pointingTo: relativeBlobPath) {
-            // Symlinks not supported - copy the blob instead
-            let blobPath = blobsDirectory(repo: repo, kind: kind).appendingPathComponent(normalizedEtag)
-            try FileManager.default.copyItem(at: blobPath, to: snapshotPath)
+        let blobPath = blobsDirectory(repo: repo, kind: kind).appendingPathComponent(normalizedEtag)
+        try installSnapshotEntry(at: snapshotPath, pointingToBlob: normalizedEtag) { tempPath in
+            try FileManager.default.copyItem(at: blobPath, to: tempPath)
         }
     }
 
@@ -658,6 +641,66 @@ public struct HubCache: Sendable {
         let upPath = String(repeating: "../", count: componentsAfterSnapshots)
 
         return "\(upPath)blobs/\(blobName)"
+    }
+
+    /// Installs a snapshot entry pointing to `blobName`, atomically with respect
+    /// to concurrent callers writing to the same `snapshotPath`.
+    ///
+    /// Builds the entry at a UUID-suffixed temp path inside the same directory,
+    /// then uses POSIX `rename(2)` to swap it onto `snapshotPath`. `rename` is
+    /// atomic on the same volume and silently overwrites an existing
+    /// destination, unlike `FileManager.moveItem(at:to:)` which pre-checks
+    /// existence and fails if a file appeared between the check and the rename.
+    /// When two callers race, one rename wins and the other loser's identical
+    /// content-addressed symlink simply replaces it — both observe success.
+    ///
+    /// On platforms without symbolic-link support (some Windows
+    /// configurations), `populateNonSymlinkAt` is invoked to populate the temp
+    /// path before the rename — for example, `copyItem` from the blob, or
+    /// `data.write` for caller-supplied bytes.
+    private func installSnapshotEntry(
+        at snapshotPath: URL,
+        pointingToBlob blobName: String,
+        populateNonSymlinkAt populate: (URL) throws -> Void
+    ) throws {
+        let parent = snapshotPath.deletingLastPathComponent()
+        let tempPath = parent.appendingPathComponent(
+            ".\(snapshotPath.lastPathComponent).tmp.\(UUID().uuidString)"
+        )
+
+        do {
+            let relativeBlobPath = relativePathToBlob(
+                from: snapshotPath,
+                blobName: blobName
+            )
+            if !createSymlink(at: tempPath, pointingTo: relativeBlobPath) {
+                try populate(tempPath)
+            }
+        } catch {
+            try? FileManager.default.removeItem(at: tempPath)
+            throw error
+        }
+
+        var renameErrno: Int32 = 0
+        let result = tempPath.withUnsafeFileSystemRepresentation { src -> Int32 in
+            snapshotPath.withUnsafeFileSystemRepresentation { dst -> Int32 in
+                guard let src, let dst else { return -1 }
+                let ret = rename(src, dst)
+                // Capture `errno` before returning out of the closure: any
+                // intervening syscall (including the closure teardown itself)
+                // can clobber the thread-local `errno`.
+                if ret != 0 { renameErrno = errno }
+                return ret
+            }
+        }
+        if result != 0 {
+            try? FileManager.default.removeItem(at: tempPath)
+            throw HubCacheError.atomicCopyFailed(
+                source: tempPath,
+                destination: snapshotPath,
+                reason: String(cString: strerror(renameErrno))
+            )
+        }
     }
 
     /// Attempts to create a symbolic link.
