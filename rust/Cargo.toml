@@ -1,0 +1,129 @@
+[package]
+name = "hf_api_rust"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+
+[lib]
+name = "hf_api_rust"
+crate-type = ["staticlib"]
+
+[[bin]]
+name = "uniffi-bindgen-swift"
+path = "src/bin/uniffi-bindgen-swift.rs"
+required-features = ["uniffi-cli"]
+
+[dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "macros"] }
+# Only `tokio_util::sync::CancellationToken` is used. tokio-util 0.7's
+# `sync` module is unconditionally compiled (not gated by a feature
+# flag – the published feature list is `codec`/`compat`/`io`/`io-util`/
+# `join-map`/`net`/`rt`/`time`/`full`, none of which touches `sync`).
+# Leaving every optional feature off keeps the dep lean.
+tokio-util = { version = "0.7", default-features = false }
+futures = "0.3"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0"
+# `async-trait` is required for `with_foreign` UniFFI traits that have async
+# methods. Pure `async fn` in trait isn't dyn-compatible (no vtable), so the
+# crate desugars to a `Pin<Box<dyn Future>>` return type which UniFFI's
+# foreign-callback bridge can route through. Used by `FFITokenProvider`.
+async-trait = "0.1"
+# `reqwest` is reached via `hf_hub::HFError::Request { source: reqwest::Error }`
+# – we use its `is_timeout()` / `is_connect()` / `is_decode()` discriminants
+# to classify transport errors at the FFI boundary. We never construct a
+# client through this dependency directly; hf-hub picks the per-target TLS
+# backend itself. `default-features = false` skips reqwest 0.13's defaults
+# (`default-tls = rustls`, `charset`, `http2`, `system-proxy`) so the crate
+# only links what error classification needs.
+reqwest = { version = "0.13", default-features = false }
+# Lightweight observability for the FFI layer. Used only by the
+# token-rotation event in `client::active_client` so consumers wiring up
+# a `tracing-subscriber` on the host side can diagnose unexpected client
+# rebuilds. No other spans live in the crate yet.
+tracing = "0.1"
+# `tokio` feature enables UniFFI's async-compat shim, used by every async
+# fn we export with `#[uniffi::export(async_runtime = "tokio")]`. Without it
+# the macro emits code that references `uniffi::deps::async_compat`, which
+# the `uniffi_core` crate gates behind the `tokio` feature.
+uniffi = { version = "0.31.1", default-features = false, features = ["tokio"] }
+
+# hf-hub is forked at DePasqualeOrg/hf-hub on `swift-hf-api-patches`. The
+# branch carries ten PR-shaped commits not yet upstream:
+#   1. Make snapshot_download_impl closures HRTB-clean
+#   2. Expose native-tls/rustls-tls passthrough features
+#   3. Per-builder disable_implicit_token option
+#   4. Resume cached file downloads from .incomplete
+#   5. Collapse snapshot Start cascade to a single event per operation
+#   6. Expose transfer-byte channel on DownloadEvent::AggregateProgress
+#   7. Expose GlobMatcher as a public type
+#   8. Expose repository ID segment validation
+#   9. Add delete_revisions and DeleteCacheStrategy
+#  10. Co-locate the Xet cache with an explicit hub cache_dir
+# Per-platform TLS: native-tls on Apple (Security.framework, no rustls
+# bundle), rustls-tls on Linux (no system OpenSSL ABI dependency). The
+# feature passthrough only works once both forks are wired in – see the
+# [patch.crates-io] block below for the corresponding xet-core patch.
+# See docs/upstream-patches.md for the full policy and refresh protocol.
+[target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
+hf-hub = { git = "https://github.com/DePasqualeOrg/hf-hub", rev = "ad3f31b675bd5f407013159ac5eb66f7e4daebbd", default-features = false, features = ["native-tls"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+hf-hub = { git = "https://github.com/DePasqualeOrg/hf-hub", rev = "ad3f31b675bd5f407013159ac5eb66f7e4daebbd", default-features = false, features = ["rustls-tls"] }
+
+[features]
+# Enables the `uniffi-bindgen-swift` binary entry point. Activates `cargo-metadata`
+# so the bindgen auto-discovers `rust/uniffi.toml` from the crate root.
+uniffi-cli = ["uniffi/cli", "uniffi/cargo-metadata"]
+
+# Matches the Python `tokenizers` / `hf_xet` wheels. `unwind` lets UniFFI
+# surface Rust panics as thrown Swift errors instead of aborting the host
+# app — important here because a tokio task panic under `abort` would take
+# the whole process down. Unstripped keeps symbol names for crash reports.
+# Costs ~2.48 MB in the linked consumer binary (aarch64-apple-darwin); the
+# delta is larger than swift-tokenizers' ~770 KB due to tokio/reqwest/hf-hub
+# bulk and async unwind tables.
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "unwind"
+strip = "none"
+
+# UniFFI 0.31.x needs two Swift bindgen fixes here: preserve leading U+FEFF byte
+# order marks when lifting strings, and allow this generated wrapper to hide the
+# lower-level Rust FFI module plus converter helpers from public Swift interfaces.
+# Shared with swift-tokenizers for the BOM fix; the visibility options live in
+# `rust/uniffi.toml`.
+# TODO: drop this entire `[patch.crates-io]` block and bump the `uniffi`
+# version in `[dependencies]` once the needed Swift bindgen fixes are included
+# in a uniffi-rs release.
+#
+# xet-core is forked at DePasqualeOrg/xet-core on `swift-hf-api-patches`.
+# The branch carries three PR-shaped commits:
+#   1. Add rustls-tls passthrough and disable transitive xet-client defaults
+#      Required to make the `hf-hub/native-tls` and `hf-hub/rustls-tls`
+#      features above actually take effect end-to-end (without it, hf-xet's
+#      transitive default rustls-tls re-activates and unifies in the dep graph).
+#   2. Add data.cache_root to override the Xet cache root
+#      Lets hf-hub co-locate the Xet cache with an explicit hub cache_dir so
+#      sandboxed hosts (e.g. iOS) keep both caches inside the writable container.
+#   3. Finalize download progress totals together
+#      Stops the logical-byte total being finalized ahead of the transfer
+#      total, which made progress bars overshoot and pin near 100%.
+[patch.crates-io]
+uniffi = { git = "https://github.com/DePasqualeOrg/uniffi-rs.git", rev = "e3e99802532ba76887b21a38de926dd55f469d48" }
+uniffi_bindgen = { git = "https://github.com/DePasqualeOrg/uniffi-rs.git", rev = "e3e99802532ba76887b21a38de926dd55f469d48" }
+uniffi_core = { git = "https://github.com/DePasqualeOrg/uniffi-rs.git", rev = "e3e99802532ba76887b21a38de926dd55f469d48" }
+uniffi_macros = { git = "https://github.com/DePasqualeOrg/uniffi-rs.git", rev = "e3e99802532ba76887b21a38de926dd55f469d48" }
+uniffi_meta = { git = "https://github.com/DePasqualeOrg/uniffi-rs.git", rev = "e3e99802532ba76887b21a38de926dd55f469d48" }
+uniffi_pipeline = { git = "https://github.com/DePasqualeOrg/uniffi-rs.git", rev = "e3e99802532ba76887b21a38de926dd55f469d48" }
+uniffi_udl = { git = "https://github.com/DePasqualeOrg/uniffi-rs.git", rev = "e3e99802532ba76887b21a38de926dd55f469d48" }
+uniffi_internal_macros = { git = "https://github.com/DePasqualeOrg/uniffi-rs.git", rev = "e3e99802532ba76887b21a38de926dd55f469d48" }
+hf-xet = { git = "https://github.com/DePasqualeOrg/xet-core", rev = "b8c8a0194a73ccb2ee3211146672612b80c0b416" }
+xet-client = { git = "https://github.com/DePasqualeOrg/xet-core", rev = "b8c8a0194a73ccb2ee3211146672612b80c0b416" }
+xet-runtime = { git = "https://github.com/DePasqualeOrg/xet-core", rev = "b8c8a0194a73ccb2ee3211146672612b80c0b416" }
+xet-data = { git = "https://github.com/DePasqualeOrg/xet-core", rev = "b8c8a0194a73ccb2ee3211146672612b80c0b416" }
+xet-core-structures = { git = "https://github.com/DePasqualeOrg/xet-core", rev = "b8c8a0194a73ccb2ee3211146672612b80c0b416" }

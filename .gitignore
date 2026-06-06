@@ -6,3 +6,9 @@ DerivedData/
 .swiftpm/
 .netrc
 Package.resolved
+__pycache__/
+*.pyc
+
+# Generated Rust backend artifacts
+/Artifacts/
+/rust/**/target/

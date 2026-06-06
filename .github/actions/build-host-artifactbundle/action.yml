@@ -1,0 +1,114 @@
+name: Build host-only HFAPIRust artifactbundle
+description: >
+  Build a host-only HFAPIRust.artifactbundle so `swift build` can resolve the
+  `HFAPIRust` binary target against a local path. CI uses this in lieu of the
+  not-yet-published artifact URL pinned in Package.swift.
+
+  Emits the assembled bundle at rust/target/artifactbundle/HFAPIRust.artifactbundle
+  and exports `HFAPI_RUST_LOCAL_ARTIFACTBUNDLE_PATH` for subsequent steps to
+  point Package.swift at it.
+
+inputs:
+  apple:
+    description: "Set to 'true' to build the macOS host slice. Otherwise builds the Linux x86_64 host slice."
+    required: false
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - name: Read Rust toolchain version
+      id: rust-toolchain
+      shell: bash
+      run: |
+        version=$(awk -F'"' '/^channel/ {print $2; exit}' rust-toolchain.toml)
+        echo "version=$version" >> "$GITHUB_OUTPUT"
+
+    - name: Install Rust toolchain (Apple)
+      if: inputs.apple == 'true'
+      uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+      with:
+        toolchain: ${{ steps.rust-toolchain.outputs.version }}
+        targets: aarch64-apple-darwin
+
+    - name: Install Rust toolchain (Linux)
+      if: inputs.apple != 'true'
+      uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+      with:
+        toolchain: ${{ steps.rust-toolchain.outputs.version }}
+
+    - name: Cache cargo registry, git, and target
+      uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          rust/target
+        key: ${{ runner.os }}-host-artifactbundle-${{ hashFiles('rust/Cargo.lock', 'rust/Cargo.toml', 'rust/src/**', 'rust/uniffi.toml') }}
+        restore-keys: |
+          ${{ runner.os }}-host-artifactbundle-
+
+    - name: Build host Rust slice (Apple)
+      if: inputs.apple == 'true'
+      shell: bash
+      env:
+        TOOLCHAIN: ${{ steps.rust-toolchain.outputs.version }}
+      run: |
+        set -euo pipefail
+        cargo +"${TOOLCHAIN}" build \
+            --manifest-path rust/Cargo.toml \
+            --locked \
+            --release \
+            --target aarch64-apple-darwin
+
+    - name: Build host Rust slice (Linux)
+      if: inputs.apple != 'true'
+      shell: bash
+      env:
+        TOOLCHAIN: ${{ steps.rust-toolchain.outputs.version }}
+      run: |
+        set -euo pipefail
+        cargo +"${TOOLCHAIN}" build \
+            --manifest-path rust/Cargo.toml \
+            --locked \
+            --release
+
+    - name: Generate UniFFI bindings
+      shell: bash
+      run: bash scripts/rust/build/build-uniffi-bindings.sh
+
+    - name: Stage Apple build directory
+      if: inputs.apple == 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        out=rust/target/apple-build
+        mkdir -p "$out/apple-macos" "$out/include"
+        cp rust/target/aarch64-apple-darwin/release/libhf_api_rust.a "$out/apple-macos/libhf_api_rust.a"
+        cp rust/target/uniffi-bindings/HFAPIRust.h "$out/include/HFAPIRust.h"
+        bash scripts/rust/build/strip-modulemap-uses.sh \
+            rust/target/uniffi-bindings/module.modulemap \
+            "$out/include/module.modulemap"
+
+    - name: Stage Linux build directory
+      if: inputs.apple != 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        out=rust/target/linux-build
+        mkdir -p "$out/linux-x86_64" "$out/include"
+        cp rust/target/x86_64-unknown-linux-gnu/release/libhf_api_rust.a "$out/linux-x86_64/libhf_api_rust.a" 2>/dev/null \
+            || cp rust/target/release/libhf_api_rust.a "$out/linux-x86_64/libhf_api_rust.a"
+        cp rust/target/uniffi-bindings/HFAPIRust.h "$out/include/HFAPIRust.h"
+        bash scripts/rust/build/strip-modulemap-uses.sh \
+            rust/target/uniffi-bindings/module.modulemap \
+            "$out/include/module.modulemap"
+
+    - name: Assemble host-only artifactbundle
+      shell: bash
+      run: bash scripts/rust/build/assemble-artifactbundle.sh ci-host
+
+    - name: Export artifactbundle path
+      shell: bash
+      run: |
+        echo "HFAPI_RUST_LOCAL_ARTIFACTBUNDLE_PATH=rust/target/artifactbundle/HFAPIRust.artifactbundle" >> "$GITHUB_ENV"
