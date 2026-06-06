@@ -1,0 +1,285 @@
+name: Publish Rust artifactbundle
+
+run-name: Rust artifactbundle ${{ inputs.version }} @ ${{ github.sha }}
+
+on:
+    workflow_dispatch:
+        inputs:
+            version:
+                description: Semantic artifact version, for example 0.4.0 or 0.4.0-rc.1
+                required: true
+                type: string
+            expected_commit:
+                description: Full commit SHA the dispatcher expects to run against. Must match GITHUB_SHA.
+                required: true
+                type: string
+
+permissions:
+    contents: read
+
+jobs:
+    apple-build:
+        name: Build Apple slices
+        runs-on: macos-latest
+        steps:
+            - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+            - uses: ./.github/actions/verify-expected-commit
+              with:
+                  expected_commit: ${{ inputs.expected_commit }}
+
+            - name: Read Rust toolchain version
+              id: rust-toolchain
+              run: |
+                  version=$(awk -F'"' '/^channel/ {print $2; exit}' rust-toolchain.toml)
+                  echo "version=$version" >> "$GITHUB_OUTPUT"
+
+            - name: Install Rust toolchain
+              uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+              with:
+                  toolchain: ${{ steps.rust-toolchain.outputs.version }}
+                  targets: aarch64-apple-darwin,x86_64-apple-darwin,aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios
+
+            - name: Build Apple Rust slices
+              run: bash scripts/rust/build/build-rust-apple-slices.sh
+
+            - name: Verify committed UniFFI wrapper and staged headers match Rust source
+              # `build-rust-apple-slices.sh` already ran the bindgen and staged the
+              # cross-platform modulemap; the drift check rebuilds bindgen into a
+              # temp dir and diffs against the committed wrapper plus the staged
+              # apple-build/include/ files. A nonzero diff fails the release before
+              # any artifact is published, so the manifest's `source_hash_sha256`
+              # always describes the source state at GITHUB_SHA.
+              run: bash scripts/rust/check-wrapper-drift.sh
+
+            - name: Upload Apple build artifact
+              uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+              with:
+                  name: apple-build
+                  path: rust/target/apple-build/
+                  if-no-files-found: error
+
+    linux-build:
+        name: Build Linux slices
+        runs-on: ubuntu-22.04
+        steps:
+            - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+            - uses: ./.github/actions/verify-expected-commit
+              with:
+                  expected_commit: ${{ inputs.expected_commit }}
+
+            - name: Read Rust toolchain version
+              id: rust-toolchain
+              run: |
+                  version=$(awk -F'"' '/^channel/ {print $2; exit}' rust-toolchain.toml)
+                  echo "version=$version" >> "$GITHUB_OUTPUT"
+
+            - name: Install cross-toolchain for non-host Linux target
+              # ubuntu-22.04 GitHub runners are x86_64; we still ship aarch64-unknown-linux-gnu
+              # from the same job, so install the aarch64 GCC cross-toolchain plus the matching
+              # libc and configure Cargo to invoke it as the linker for that target. Without
+              # this mapping `cargo build --target aarch64-unknown-linux-gnu` invokes the host
+              # `gcc` and the link step fails with `unrecognized command-line option`.
+              run: |
+                  set -euo pipefail
+                  sudo apt-get update -qq
+                  sudo apt-get install -y --no-install-recommends \
+                      gcc-aarch64-linux-gnu \
+                      libc6-dev-arm64-cross
+                  mkdir -p .cargo
+                  cat >> .cargo/config.toml <<'EOF'
+                  [target.aarch64-unknown-linux-gnu]
+                  linker = "aarch64-linux-gnu-gcc"
+                  EOF
+
+            - name: Install Rust toolchain
+              uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+              with:
+                  toolchain: ${{ steps.rust-toolchain.outputs.version }}
+                  targets: x86_64-unknown-linux-gnu,aarch64-unknown-linux-gnu
+
+            - name: Build Linux Rust slices
+              run: bash scripts/rust/build/build-rust-linux-archives.sh
+
+            - name: Upload Linux build artifact
+              uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+              with:
+                  name: linux-build
+                  path: rust/target/linux-build/
+                  if-no-files-found: error
+
+    assemble:
+        name: Assemble and validate artifactbundle
+        needs: [apple-build, linux-build]
+        runs-on: macos-latest
+        steps:
+            - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+            - uses: ./.github/actions/select-xcode
+
+            - name: Download Apple build artifact
+              uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+              with:
+                  name: apple-build
+                  path: rust/target/apple-build/
+
+            - name: Download Linux build artifact
+              uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+              with:
+                  name: linux-build
+                  path: rust/target/linux-build/
+
+            - name: Assemble artifactbundle
+              run: bash scripts/rust/build/assemble-artifactbundle.sh "${{ inputs.version }}"
+
+            - name: Verify all five variants are present
+              # The release pipeline must publish a complete bundle. The
+              # assembler is permissive (PR CI uses it for a host-only
+              # bundle), so the release-side check goes here.
+              run: |
+                  set -euo pipefail
+                  info="rust/target/artifactbundle/HFAPIRust.artifactbundle/info.json"
+                  count=$(jq '.artifacts.HFAPIRust.variants | length' "$info")
+                  if [[ "$count" != 5 ]]; then
+                      echo "Expected 5 variants in $info but found $count." >&2
+                      jq . "$info" >&2
+                      exit 1
+                  fi
+
+            - name: Smoke-test the assembled artifactbundle
+              # Resolve the package against the just-staged bundle directory
+              # (not the zipped archive) so SwiftPM picks up the macOS variant
+              # and we exercise the full link path before publishing.
+              env:
+                  HFAPI_RUST_LOCAL_ARTIFACTBUNDLE_PATH: rust/target/artifactbundle/HFAPIRust.artifactbundle
+              run: |
+                  set -euo pipefail
+                  swift package clean
+                  swift build
+
+            - name: Compute source hash
+              id: source-hash
+              run: |
+                  hash=$(bash scripts/rust/hash-source.sh)
+                  echo "hash=$hash" >> "$GITHUB_OUTPUT"
+
+            - name: Build release manifest
+              env:
+                  VERSION: ${{ inputs.version }}
+                  SOURCE_HASH: ${{ steps.source-hash.outputs.hash }}
+                  GIT_COMMIT: ${{ github.sha }}
+                  REPO: ${{ github.repository }}
+              run: |
+                  set -euo pipefail
+
+                  archive="Artifacts/HFAPIRust-${VERSION}.artifactbundle.zip"
+                  checksum_file="${archive}.checksum"
+                  manifest="Artifacts/HFAPIRust-${VERSION}.manifest.json"
+
+                  if [[ ! -f "$archive" || ! -f "$checksum_file" ]]; then
+                      echo "Expected $archive and $checksum_file to exist after assembly." >&2
+                      exit 1
+                  fi
+
+                  rust_toolchain=$(awk -F'"' '/^channel/ {print $2; exit}' rust-toolchain.toml)
+                  checksum=$(awk '{print $1}' "$checksum_file")
+                  artifactbundle_url="https://github.com/${REPO}/releases/download/hfapi-rust-${VERSION}/HFAPIRust-${VERSION}.artifactbundle.zip"
+
+                  jq -n \
+                      --arg version "$VERSION" \
+                      --arg git_commit "$GIT_COMMIT" \
+                      --arg rust_toolchain "$rust_toolchain" \
+                      --arg source_hash_sha256 "$SOURCE_HASH" \
+                      --arg artifactbundle_url "$artifactbundle_url" \
+                      --arg checksum "$checksum" \
+                      '{
+                          hash_schema_version: 3,
+                          version: $version,
+                          git_commit: $git_commit,
+                          rust_toolchain: $rust_toolchain,
+                          source_hash_sha256: $source_hash_sha256,
+                          artifactbundle_url: $artifactbundle_url,
+                          checksum: $checksum,
+                      }' > "$manifest"
+
+            - name: Generate release notes
+              env:
+                  VERSION: ${{ inputs.version }}
+              run: |
+                  set -euo pipefail
+
+                  python3 scripts/rust/release/rust-release-notes.py \
+                      --repo-root . \
+                      --target-ref "$GITHUB_SHA" \
+                      --version "${VERSION}" \
+                      --output "Artifacts/HFAPIRust-${VERSION}.release-notes.md"
+
+            - name: Upload release artifacts
+              uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+              with:
+                  name: HFAPIRust-${{ inputs.version }}
+                  path: |
+                      Artifacts/HFAPIRust-${{ inputs.version }}.artifactbundle.zip
+                      Artifacts/HFAPIRust-${{ inputs.version }}.artifactbundle.zip.checksum
+                      Artifacts/HFAPIRust-${{ inputs.version }}.manifest.json
+                      Artifacts/HFAPIRust-${{ inputs.version }}.release-notes.md
+                  if-no-files-found: error
+
+    publish:
+        name: Publish release assets
+        needs: assemble
+        runs-on: macos-latest
+        environment: rust-release
+        permissions:
+            contents: write
+        steps:
+            - name: Download release artifacts
+              uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+              with:
+                  name: HFAPIRust-${{ inputs.version }}
+                  path: Artifacts
+
+            - name: Publish GitHub release
+              env:
+                  GH_TOKEN: ${{ github.token }}
+                  GH_REPO: ${{ github.repository }}
+                  VERSION: ${{ inputs.version }}
+              run: |
+                  set -euo pipefail
+
+                  if [[ ! "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+                      echo "Version must be semantic, for example 0.4.0 or 0.4.0-rc.1." >&2
+                      exit 1
+                  fi
+
+                  tag="hfapi-rust-${VERSION}"
+                  title="HFAPI Rust artifactbundle ${VERSION}"
+                  archive="Artifacts/HFAPIRust-${VERSION}.artifactbundle.zip"
+                  checksum="${archive}.checksum"
+                  manifest="Artifacts/HFAPIRust-${VERSION}.manifest.json"
+                  notes_file="Artifacts/HFAPIRust-${VERSION}.release-notes.md"
+
+                  if gh release view "${tag}" >/dev/null 2>&1; then
+                      echo "Release ${tag} already exists. Publish a new semantic version instead of mutating an existing artifact." >&2
+                      exit 1
+                  fi
+
+                  release_cmd=(
+                      gh release create "${tag}" "${archive}" "${checksum}" "${manifest}"
+                      --target "$GITHUB_SHA"
+                      --title "${title}"
+                      --notes-file "${notes_file}"
+                  )
+                  if [[ "${VERSION}" == *-* ]]; then
+                      release_cmd+=(--prerelease)
+                  fi
+
+                  "${release_cmd[@]}"
+
+                  release_url="$(gh release view "${tag}" --json url --jq '.url')"
+                  {
+                      echo "### Published release"
+                      echo
+                      echo "- ${release_url}"
+                  } >> "$GITHUB_STEP_SUMMARY"

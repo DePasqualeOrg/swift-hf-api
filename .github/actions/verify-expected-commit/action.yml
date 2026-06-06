@@ -1,0 +1,32 @@
+name: Verify expected commit
+description: >
+  Fail the job if the workflow run's commit does not match the
+  workflow_dispatch input the maintainer asked for. This is a guard against
+  accidentally publishing an artifact built from a commit other than the
+  one cut-release.sh was dispatched against.
+
+inputs:
+  expected_commit:
+    description: Full commit SHA the dispatcher expects to run against.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+      run: |
+        set -euo pipefail
+
+        if [[ -z "$EXPECTED_COMMIT" ]]; then
+            echo "expected_commit input is required." >&2
+            exit 1
+        fi
+
+        if [[ "$GITHUB_SHA" != "$EXPECTED_COMMIT" ]]; then
+            echo "Dispatched commit mismatch:" >&2
+            echo "  expected_commit: $EXPECTED_COMMIT" >&2
+            echo "  GITHUB_SHA:      $GITHUB_SHA" >&2
+            exit 1
+        fi

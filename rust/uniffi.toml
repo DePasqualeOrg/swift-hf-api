@@ -1,0 +1,15 @@
+# UniFFI Swift bindgen configuration. Field names follow the Swift bindings
+# `Config` struct in `uniffi_bindgen::bindings::swift::gen_swift::Config`.
+#
+# `module_name` is the namespace UniFFI uses when generating the Swift wrapper
+# file and is also the SwiftPM target that holds the wrapper. `ffi_module_name`
+# is the C module declared in the generated modulemap and imported by the
+# wrapper; pinning it to the SwiftPM `binaryTarget` name (`HFAPIRust`) keeps
+# the binary target unchanged.
+
+[bindings.swift]
+module_name = "HFAPIFFI"
+ffi_module_name = "HFAPIRust"
+ffi_module_filename = "HFAPIRust"
+implementation_only_ffi_module_import = true
+internal_ffi_converter_helpers = true

@@ -1,0 +1,28 @@
+name: Select Xcode with Swift 6.2+
+description: >
+  Select the newest Xcode 26+ install on the runner so a swift-tools-version
+  6.2 Package.swift resolves. macos-latest currently defaults to Xcode 16.4,
+  which ships Swift 6.1.0 and rejects 6.2 manifests with
+  "is using Swift tools version 6.2.0 but the installed version is 6.1.0".
+
+# TODO: remove this action and every `- uses: ./.github/actions/select-xcode`
+# call site once GitHub's macos-latest image defaults to an Xcode that ships
+# Swift 6.2 or later. Track the default at:
+#   https://github.com/actions/runner-images/blob/main/images/macos/macos-15-Readme.md
+# (look for "(default)" in the Xcode table). When the default version meets
+# the package's swift-tools-version, the explicit selection becomes redundant.
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: |
+        set -euo pipefail
+        xcode=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
+        if [[ -z "$xcode" ]]; then
+            echo "No Xcode 26+ installed on this runner image." >&2
+            ls /Applications | grep -i xcode >&2 || true
+            exit 1
+        fi
+        sudo xcode-select -s "$xcode/Contents/Developer"
+        swift --version
