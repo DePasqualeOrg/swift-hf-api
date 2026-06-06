@@ -18,8 +18,9 @@ import PackageDescription
 // and check-package-swift-pin.sh – do not move or reformat the two `let`
 // declarations without updating both scripts.
 // pin:start
-let hfapiRustArtifactBundleURL = ""
-let hfapiRustArtifactBundleChecksum = ""
+let hfapiRustArtifactBundleURL =
+    "https://github.com/DePasqualeOrg/swift-hf-api/releases/download/hfapi-rust-0.4.0/HFAPIRust-0.4.0.artifactbundle.zip"
+let hfapiRustArtifactBundleChecksum = "3190ea20175926e103259577f372303625c2b00f48635350da3ed0751fa3308f"
 // pin:end
 
 // When set, build against a local artifactbundle directory instead of the
