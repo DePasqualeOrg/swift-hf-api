@@ -84,7 +84,10 @@ localize_archive_symbols() {
   (
     cd "${workdir}"
     ar -x "${archive}"
-    ld -r -arch "${arch}" \
+    # -S drops the debug map (N_OSO stabs); without it the merged object
+    # references the original .o files in this temp dir, and every consumer's
+    # debug build warns "unable to open object file" for each of them.
+    ld -r -S -arch "${arch}" \
       -platform_version "${platform}" "${min_version}" "${sdk_version}" \
       ./*.o -o merged.o
     nm -gU merged.o | awk '{print $3}' | grep -E '^_(uniffi|ffi)_' > keep.txt
