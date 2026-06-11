@@ -67,6 +67,50 @@ done
 # artifactbundle.sh` without macOS being in the loop.
 bash "${SCRIPT_DIR}/build-uniffi-bindings.sh"
 
+# Localize every global symbol except the UniFFI C surface (uniffi_* / ffi_*).
+# Rust staticlibs export Rust runtime symbols (rust_eh_personality,
+# std::panicking::EMPTY_PANIC) as globals, so two Rust staticlibs in one
+# binary collide with duplicate-symbol link errors. Merging the archive into
+# one relocatable object binds cross-member references internally; objcopy
+# then demotes the non-FFI globals to locals.
+localize_archive_symbols() {
+  local archive="$1" ld_tool="$2" nm_tool="$3" objcopy_tool="$4" ar_tool="$5"
+  local workdir
+  workdir="$(mktemp -d)"
+  (
+    cd "${workdir}"
+    "${ar_tool}" x "${archive}"
+    "${ld_tool}" -r ./*.o -o merged.o
+    "${nm_tool}" -g --defined-only merged.o | awk '{print $3}' | grep -E '^(uniffi|ffi)_' | sort -u > keep.txt
+    local kept
+    kept="$(wc -l < keep.txt | tr -d ' ')"
+    if [[ "${kept}" -lt 100 ]]; then
+      echo "Symbol localization for ${archive} would keep only ${kept} FFI symbols; aborting." >&2
+      exit 1
+    fi
+    "${objcopy_tool}" --keep-global-symbols=keep.txt merged.o
+    rm -f "${archive}"
+    "${ar_tool}" rcs "${archive}" merged.o
+  )
+  rm -rf "${workdir}"
+}
+
+for target in "${TARGETS[@]}"; do
+  archive="${CRATE_DIR}/target/${target}/release/libhf_api_rust.a"
+  case "${target}" in
+    x86_64-unknown-linux-gnu)
+      localize_archive_symbols "${archive}" ld nm objcopy ar
+      ;;
+    aarch64-unknown-linux-gnu)
+      localize_archive_symbols "${archive}" aarch64-linux-gnu-ld aarch64-linux-gnu-nm aarch64-linux-gnu-objcopy aarch64-linux-gnu-ar
+      ;;
+    *)
+      echo "No symbol-localization toolchain mapping for ${target}." >&2
+      exit 1
+      ;;
+  esac
+done
+
 if [[ "${LINUX_OUT}" != *"/rust/target/linux-build" ]]; then
   echo "Refusing to rm LINUX_OUT=${LINUX_OUT}: does not end with /rust/target/linux-build." >&2
   exit 1

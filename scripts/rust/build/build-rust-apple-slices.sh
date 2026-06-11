@@ -52,6 +52,11 @@ TARGETS=(
 rustup toolchain install "${TOOLCHAIN}" --profile minimal
 rustup target add --toolchain "${TOOLCHAIN}" "${TARGETS[@]}"
 
+# Match Package.swift's minimum deployment targets so consumers linking at
+# those minimums don't get "object file was built for newer version" warnings.
+export MACOSX_DEPLOYMENT_TARGET=14.0
+export IPHONEOS_DEPLOYMENT_TARGET=17.0
+
 for target in "${TARGETS[@]}"; do
   echo "Building for ${target}..."
   cargo +"${TOOLCHAIN}" build \
@@ -64,6 +69,45 @@ done
 # Reuses the host static library we just built – `cargo build` inside is a
 # no-op with a warm target dir.
 bash "${SCRIPT_DIR}/build-uniffi-bindings.sh"
+
+# Localize every global symbol except the UniFFI C surface (uniffi_* / ffi_*).
+# Rust staticlibs export Rust runtime symbols (rust_eh_personality,
+# std::panicking::EMPTY_PANIC) as globals, so two Rust staticlibs in one
+# binary collide with duplicate-symbol link errors. Merging the archive into
+# one relocatable object binds cross-member references internally; nmedit
+# then demotes the non-FFI globals to locals.
+localize_archive_symbols() {
+  local archive="$1" arch="$2" platform="$3" min_version="$4" sdk_version="$5"
+  local workdir
+  workdir="$(mktemp -d)"
+  (
+    cd "${workdir}"
+    ar -x "${archive}"
+    ld -r -arch "${arch}" \
+      -platform_version "${platform}" "${min_version}" "${sdk_version}" \
+      ./*.o -o merged.o
+    nm -gU merged.o | awk '{print $3}' | grep -E '^_(uniffi|ffi)_' > keep.txt
+    local kept
+    kept="$(wc -l < keep.txt | tr -d ' ')"
+    if [[ "${kept}" -lt 100 ]]; then
+      echo "Symbol localization for ${archive} would keep only ${kept} FFI symbols; aborting." >&2
+      exit 1
+    fi
+    nmedit -s keep.txt -o edited.o merged.o
+    libtool -static -o "${archive}" edited.o
+  )
+  rm -rf "${workdir}"
+}
+
+MACOS_SDK_VERSION="$(xcrun --sdk macosx --show-sdk-version)"
+IOS_SDK_VERSION="$(xcrun --sdk iphoneos --show-sdk-version)"
+IOS_SIM_SDK_VERSION="$(xcrun --sdk iphonesimulator --show-sdk-version)"
+
+localize_archive_symbols "${CRATE_DIR}/target/aarch64-apple-darwin/release/libhf_api_rust.a" arm64 macos 14.0 "${MACOS_SDK_VERSION}"
+localize_archive_symbols "${CRATE_DIR}/target/x86_64-apple-darwin/release/libhf_api_rust.a" x86_64 macos 14.0 "${MACOS_SDK_VERSION}"
+localize_archive_symbols "${CRATE_DIR}/target/aarch64-apple-ios/release/libhf_api_rust.a" arm64 ios 17.0 "${IOS_SDK_VERSION}"
+localize_archive_symbols "${CRATE_DIR}/target/aarch64-apple-ios-sim/release/libhf_api_rust.a" arm64 ios-simulator 17.0 "${IOS_SIM_SDK_VERSION}"
+localize_archive_symbols "${CRATE_DIR}/target/x86_64-apple-ios/release/libhf_api_rust.a" x86_64 ios-simulator 17.0 "${IOS_SIM_SDK_VERSION}"
 
 if [[ "${APPLE_OUT}" != *"/rust/target/apple-build" ]]; then
   echo "Refusing to rm APPLE_OUT=${APPLE_OUT}: does not end with /rust/target/apple-build." >&2
