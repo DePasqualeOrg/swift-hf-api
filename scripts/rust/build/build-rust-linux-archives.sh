@@ -76,6 +76,7 @@ bash "${SCRIPT_DIR}/build-uniffi-bindings.sh"
 localize_archive_symbols() {
   echo "Localizing non-FFI symbols in $1..."
   local archive="$1" ld_tool="$2" nm_tool="$3" objcopy_tool="$4" ar_tool="$5"
+  echo "  using: ${ld_tool} ($("${ld_tool}" --version | head -1)), ${objcopy_tool}"
   local workdir
   workdir="$(mktemp -d)"
   (
@@ -100,10 +101,10 @@ for target in "${TARGETS[@]}"; do
   archive="${CRATE_DIR}/target/${target}/release/libhf_api_rust.a"
   case "${target}" in
     x86_64-unknown-linux-gnu)
-      localize_archive_symbols "${archive}" ld nm objcopy ar
+      localize_archive_symbols "${archive}" /usr/bin/ld /usr/bin/nm /usr/bin/objcopy /usr/bin/ar
       ;;
     aarch64-unknown-linux-gnu)
-      localize_archive_symbols "${archive}" aarch64-linux-gnu-ld aarch64-linux-gnu-nm aarch64-linux-gnu-objcopy aarch64-linux-gnu-ar
+      localize_archive_symbols "${archive}" /usr/bin/aarch64-linux-gnu-ld /usr/bin/aarch64-linux-gnu-nm /usr/bin/aarch64-linux-gnu-objcopy /usr/bin/aarch64-linux-gnu-ar
       ;;
     *)
       echo "No symbol-localization toolchain mapping for ${target}." >&2
