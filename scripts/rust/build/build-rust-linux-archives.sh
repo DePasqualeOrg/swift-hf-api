@@ -82,6 +82,14 @@ localize_archive_symbols() {
   (
     cd "${workdir}"
     "${ar_tool}" x "${archive}"
+    # Fat LTO leaves embedded bitcode (.llvmbc/.llvmcmd) in the members.
+    # GNU ld auto-loads the LLVM gold plugin when it sees bitcode sections,
+    # and a plugin older than the bitcode's producer crashes with
+    # "LLVM ERROR: Invalid encoding". The bitcode is only useful for further
+    # LTO, so strip it before merging; this also shrinks the shipped archive.
+    for obj in ./*.o; do
+      "${objcopy_tool}" --remove-section=.llvmbc --remove-section=.llvmcmd "${obj}"
+    done
     "${ld_tool}" -r ./*.o -o merged.o
     "${nm_tool}" -g --defined-only merged.o | awk '{print $3}' | grep -E '^(uniffi|ffi)_' | sort -u > keep.txt
     local kept
