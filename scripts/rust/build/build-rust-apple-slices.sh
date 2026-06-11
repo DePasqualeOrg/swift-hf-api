@@ -77,6 +77,7 @@ bash "${SCRIPT_DIR}/build-uniffi-bindings.sh"
 # one relocatable object binds cross-member references internally; nmedit
 # then demotes the non-FFI globals to locals.
 localize_archive_symbols() {
+  echo "Localizing non-FFI symbols in $1..."
   local archive="$1" arch="$2" platform="$3" min_version="$4" sdk_version="$5"
   local workdir
   workdir="$(mktemp -d)"
