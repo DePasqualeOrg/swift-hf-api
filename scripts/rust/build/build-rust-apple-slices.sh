@@ -159,7 +159,11 @@ smoke_test_link() {
     contract_sym="$(nm -gU "${archive}" | awk '{print $3}' | grep '_uniffi_contract_version$')"
     printf 'extern unsigned int %s(void);\nint main(void) { return 0 * (int)%s(); }\n' \
       "${contract_sym#_}" "${contract_sym#_}" > smoke.c
-    clang -arch "${arch}" smoke.c "${archive}" -o smoke.bin \
+    # The explicit -target pins the platform: the exported
+    # IPHONEOS_DEPLOYMENT_TARGET otherwise makes clang infer iOS and refuse
+    # the macOS slice.
+    clang -target "${arch}-apple-macos${MACOSX_DEPLOYMENT_TARGET}" \
+      smoke.c "${archive}" -o smoke.bin \
       -framework SystemConfiguration -framework CoreFoundation \
       -framework Security -framework IOKit -lobjc -liconv
   )
