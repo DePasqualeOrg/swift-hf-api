@@ -19,8 +19,8 @@ import PackageDescription
 // declarations without updating both scripts.
 // pin:start
 let hfapiRustArtifactBundleURL =
-    "https://github.com/DePasqualeOrg/swift-hf-api/releases/download/hfapi-rust-0.4.1/HFAPIRust-0.4.1.artifactbundle.zip"
-let hfapiRustArtifactBundleChecksum = "d50ded22b630256d0ce048f03f213a0da05cb430b8c9943af7741fbfc7a9a4a7"
+    "https://github.com/DePasqualeOrg/swift-hf-api/releases/download/hfapi-rust-0.4.2/HFAPIRust-0.4.2.artifactbundle.zip"
+let hfapiRustArtifactBundleChecksum = "d1975558aee9fb32cb7242cb2f573427b0081aa3ee5374b0976a91b60a428e04"
 // pin:end
 
 // When set, build against a local artifactbundle directory instead of the
