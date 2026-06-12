@@ -70,37 +70,60 @@ bash "${SCRIPT_DIR}/build-uniffi-bindings.sh"
 # Localize every global symbol except the UniFFI C surface (uniffi_* / ffi_*).
 # Rust staticlibs export Rust runtime symbols (rust_eh_personality,
 # std::panicking::EMPTY_PANIC) as globals, so two Rust staticlibs in one
-# binary collide with duplicate-symbol link errors. Merging the archive into
-# one relocatable object binds cross-member references internally; objcopy
-# then demotes the non-FFI globals to locals.
+# binary collide with duplicate-symbol link errors.
+#
+# The merge is root-driven: the FFI symbols are passed to `ld -r` as `-u`
+# roots, so only the archive members needed to satisfy them are loaded — the
+# same selective loading consumers' final links performed against the plain
+# archive. Merging every member instead turns a dead member's dangling extern
+# into a consumer-side link error (aws-lc's hrss.o references an x86-64 asm
+# routine that is never built, which broke the 0.4.1 Linux slice). A link
+# smoke test against the localized archive guards the result.
 localize_archive_symbols() {
   echo "Localizing non-FFI symbols in $1..."
-  local archive="$1" ld_tool="$2" nm_tool="$3" objcopy_tool="$4" ar_tool="$5"
+  local archive="$1" ld_tool="$2" nm_tool="$3" objcopy_tool="$4" ar_tool="$5" cc_tool="$6"
   echo "  using: ${ld_tool} ($("${ld_tool}" --version | head -1)), ${objcopy_tool}"
   local workdir
   workdir="$(mktemp -d)"
   (
     cd "${workdir}"
-    "${ar_tool}" x "${archive}"
     # Fat LTO leaves embedded bitcode (.llvmbc/.llvmcmd) in the members.
     # GNU ld auto-loads the LLVM gold plugin when it sees bitcode sections,
     # and a plugin older than the bitcode's producer crashes with
     # "LLVM ERROR: Invalid encoding". The bitcode is only useful for further
-    # LTO, so strip it before merging; this also shrinks the shipped archive.
-    for obj in ./*.o; do
-      "${objcopy_tool}" --remove-section=.llvmbc --remove-section=.llvmcmd "${obj}"
-    done
-    "${ld_tool}" -r ./*.o -o merged.o
-    "${nm_tool}" -g --defined-only merged.o | awk '{print $3}' | grep -E '^(uniffi|ffi)_' | sort -u > keep.txt
+    # LTO, so strip it before merging; objcopy rewrites each archive member.
+    "${objcopy_tool}" --remove-section=.llvmbc --remove-section=.llvmcmd "${archive}" stripped.a
+    "${nm_tool}" -g --defined-only stripped.a | awk '{print $3}' | grep -E '^(uniffi|ffi)_' | sort -u > keep.txt
     local kept
     kept="$(wc -l < keep.txt | tr -d ' ')"
+    # The full UniFFI surface is ~201 symbols; a much smaller count means the
+    # keep-list extraction broke and localization would strip the public API.
     if [[ "${kept}" -lt 100 ]]; then
       echo "Symbol localization for ${archive} would keep only ${kept} FFI symbols; aborting." >&2
+      exit 1
+    fi
+    local -a uflags=()
+    local sym
+    while IFS= read -r sym; do uflags+=(-u "${sym}"); done < keep.txt
+    "${ld_tool}" -r "${uflags[@]}" stripped.a -o merged.o
+    local resolved
+    resolved="$("${nm_tool}" -g --defined-only merged.o | awk '{print $3}' | grep -cE '^(uniffi|ffi)_')"
+    if [[ "${resolved}" -ne "${kept}" ]]; then
+      echo "Root-driven merge of ${archive} resolved ${resolved} of ${kept} FFI symbols; aborting." >&2
       exit 1
     fi
     "${objcopy_tool}" --keep-global-symbols=keep.txt merged.o
     rm -f "${archive}"
     "${ar_tool}" rcs "${archive}" merged.o
+    # Link an executable against the localized archive to prove the merge
+    # left no dangling references. The library list mirrors Package.swift's
+    # Linux linker settings for the FFI target.
+    local contract_sym
+    contract_sym="$(grep '_uniffi_contract_version$' keep.txt)"
+    printf 'extern unsigned int %s(void);\nint main(void) { return 0 * (int)%s(); }\n' \
+      "${contract_sym}" "${contract_sym}" > smoke.c
+    "${cc_tool}" smoke.c "${archive}" -o smoke.bin -lpthread -ldl -lm -lrt -lutil -lgcc_s
+    echo "  link smoke test passed"
   )
   rm -rf "${workdir}"
 }
@@ -109,10 +132,10 @@ for target in "${TARGETS[@]}"; do
   archive="${CRATE_DIR}/target/${target}/release/libhf_api_rust.a"
   case "${target}" in
     x86_64-unknown-linux-gnu)
-      localize_archive_symbols "${archive}" /usr/bin/ld /usr/bin/nm /usr/bin/objcopy /usr/bin/ar
+      localize_archive_symbols "${archive}" /usr/bin/ld /usr/bin/nm /usr/bin/objcopy /usr/bin/ar /usr/bin/gcc
       ;;
     aarch64-unknown-linux-gnu)
-      localize_archive_symbols "${archive}" /usr/bin/aarch64-linux-gnu-ld /usr/bin/aarch64-linux-gnu-nm /usr/bin/aarch64-linux-gnu-objcopy /usr/bin/aarch64-linux-gnu-ar
+      localize_archive_symbols "${archive}" /usr/bin/aarch64-linux-gnu-ld /usr/bin/aarch64-linux-gnu-nm /usr/bin/aarch64-linux-gnu-objcopy /usr/bin/aarch64-linux-gnu-ar /usr/bin/aarch64-linux-gnu-gcc
       ;;
     *)
       echo "No symbol-localization toolchain mapping for ${target}." >&2
