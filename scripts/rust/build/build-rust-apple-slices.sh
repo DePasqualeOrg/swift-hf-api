@@ -103,7 +103,17 @@ localize_archive_symbols() {
   workdir="$(mktemp -d)"
   (
     cd "${workdir}"
-    nm -gU "${archive}" | awk '{print $3}' | grep -E '^_(uniffi|ffi)_' | sort -u > keep.txt
+    # Harvest the FFI keep list from a throwaway full merge. Apple's nm
+    # cannot read members whose embedded LLVM bitcode is newer than its
+    # reader (Xcode 16's nm vs Rust 1.94's LLVM 21 bitcode), but ld -r
+    # copies those members without parsing the bitcode, and nm reads the
+    # merged output fine.
+    mkdir extract
+    (cd extract && ar -x "${archive}")
+    ld -r -S -arch "${arch}" \
+      -platform_version "${platform}" "${min_version}" "${sdk_version}" \
+      extract/*.o -o probe.o
+    nm -gU probe.o | awk '{print $3}' | grep -E '^_(uniffi|ffi)_' | sort -u > keep.txt
     local kept
     kept="$(wc -l < keep.txt | tr -d ' ')"
     # The full UniFFI surface is ~201 symbols; a much smaller count means the
