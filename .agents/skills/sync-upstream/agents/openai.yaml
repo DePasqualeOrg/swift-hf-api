@@ -1,0 +1,4 @@
+interface:
+  display_name: "Sync Upstream"
+  short_description: "Evaluate and adapt swift-hf-api upstream changes"
+  default_prompt: "Use $sync-upstream to evaluate the next swift-hf-api upstream changes and apply only the approved adaptations."
