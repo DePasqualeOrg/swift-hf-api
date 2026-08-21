@@ -126,9 +126,9 @@ public struct HFClient: Sendable {
         do {
             switch auth {
             case .env, .token, .unauthenticated:
-                // The FFI constructor passes `disable_implicit_token: true`,
-                // so `.unauthenticated` (sending nil) cannot fall back through
-                // hf-hub's narrower env-token chain.
+                // hf-hub does not resolve tokens from the environment itself, so
+                // `.unauthenticated` (sending nil) cannot fall back to any
+                // env-token chain below this layer.
                 ffi = try HfClientFfi(options: dto)
             case .provider(let closure):
                 let adapter = TokenProviderAdapter(closure)

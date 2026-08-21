@@ -19,8 +19,8 @@ import PackageDescription
 // declarations without updating both scripts.
 // pin:start
 let hfapiRustArtifactBundleURL =
-    "https://github.com/DePasqualeOrg/swift-hf-api/releases/download/hfapi-rust-0.4.2/HFAPIRust-0.4.2.artifactbundle.zip"
-let hfapiRustArtifactBundleChecksum = "d1975558aee9fb32cb7242cb2f573427b0081aa3ee5374b0976a91b60a428e04"
+    "https://github.com/DePasqualeOrg/swift-hf-api/releases/download/hfapi-rust-0.4.3/HFAPIRust-0.4.3.artifactbundle.zip"
+let hfapiRustArtifactBundleChecksum = "769bd1590a1832d44d8d18981754409b225a4df98b07f6e3ee44a1d8074d847a"
 // pin:end
 
 // When set, build against a local artifactbundle directory instead of the
@@ -146,7 +146,7 @@ let package = Package(
             // Swift 6's strict-concurrency mode flags `UnsafePointer` as
             // non-`Sendable` global state. The pointer is allocated once
             // and Rust owns its lifetime, so the memory model is sound;
-            // UniFFI 0.31's `uniffi.toml` exposes no setting that toggles
+            // UniFFI 0.32's `uniffi.toml` exposes no setting that toggles
             // the concurrency annotation, so we drop strict concurrency on
             // the generated module only. Consumers never see this code
             // (HFAPIFFI is not in `products`).

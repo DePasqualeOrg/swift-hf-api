@@ -21,54 +21,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "anstream"
-version = "1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "824a212faf96e9acacdbd09febd34438f8f711fb84e09a8916013cd7815ca28d"
-dependencies = [
- "anstyle",
- "anstyle-parse",
- "anstyle-query",
- "anstyle-wincon",
- "colorchoice",
- "is_terminal_polyfill",
- "utf8parse",
-]
-
-[[package]]
 name = "anstyle"
 version = "1.0.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "940b3a0ca603d1eade50a4846a2afffd5ef57a9feac2c0e2ec2e14f9ead76000"
-
-[[package]]
-name = "anstyle-parse"
-version = "1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "52ce7f38b242319f7cabaa6813055467063ecdc9d355bbb4ce0c68908cd8130e"
-dependencies = [
- "utf8parse",
-]
-
-[[package]]
-name = "anstyle-query"
-version = "1.1.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "40c48f72fd53cd289104fc64099abca73db4166ad86ea0b4341abe65af83dadc"
-dependencies = [
- "windows-sys 0.61.2",
-]
-
-[[package]]
-name = "anstyle-wincon"
-version = "3.0.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "291e6a250ff86cd4a820112fb8898808a366d8f9f58ce16d1f538353ad55747d"
-dependencies = [
- "anstyle",
- "once_cell_polyfill",
- "windows-sys 0.61.2",
-]
 
 [[package]]
 name = "anyhow"
@@ -240,16 +196,7 @@ dependencies = [
  "cc",
  "cfg-if 1.0.4",
  "constant_time_eq",
- "cpufeatures 0.3.0",
-]
-
-[[package]]
-name = "block-buffer"
-version = "0.10.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3078c7629b62d3f0439517fa394996acacc5cbc91c5a20d8c658e77abd503a71"
-dependencies = [
- "generic-array",
+ "cpufeatures",
 ]
 
 [[package]]
@@ -385,7 +332,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6f8d983286843e49675a4b7a2d174efe136dc93a18d69130dd18198a6c167601"
 dependencies = [
  "cfg-if 1.0.4",
- "cpufeatures 0.3.0",
+ "cpufeatures",
  "rand_core 0.10.1",
 ]
 
@@ -418,7 +365,6 @@ version = "4.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "714a53001bf66416adb0e2ef5ac857140e7dc3a0c48fb28b2f10762fc4b5069f"
 dependencies = [
- "anstream",
  "anstyle",
  "clap_lex",
  "strsim",
@@ -450,12 +396,6 @@ checksum = "c0f78a02292a74a88ac736019ab962ece0bc380e3f977bf72e376c5d78ff0678"
 dependencies = [
  "cc",
 ]
-
-[[package]]
-name = "colorchoice"
-version = "1.0.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1d07550c9036bf2ae0c684c4297d503f838287c83c53686d05370d0e139ae570"
 
 [[package]]
 name = "colored"
@@ -540,15 +480,6 @@ dependencies = [
 
 [[package]]
 name = "cpufeatures"
-version = "0.2.17"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "59ed5838eebb26a2bb2e58f6d5b5316989ae9d08bab10e0e6d103e656d1b0280"
-dependencies = [
- "libc",
-]
-
-[[package]]
-name = "cpufeatures"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8b2a41393f66f16b0823bb79094d54ac5fbd34ab292ddafb9a0456ac9f87d201"
@@ -582,42 +513,11 @@ checksum = "d0a5c400df2834b80a4c3327b3aad3a4c4cd4de0629063962b03235697506a28"
 
 [[package]]
 name = "crypto-common"
-version = "0.1.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "78c8292055d1c1df0cce5d180393dc8cce0abec0a7102adb6c7b1eef6016d60a"
-dependencies = [
- "generic-array",
- "typenum",
-]
-
-[[package]]
-name = "crypto-common"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "77727bb15fa921304124b128af125e7e3b968275d1b108b379190264f4423710"
 dependencies = [
  "hybrid-array",
-]
-
-[[package]]
-name = "csv"
-version = "1.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "52cd9d68cf7efc6ddfaaee42e7288d3a99d613d4b50f76ce9827ae0c6e14f938"
-dependencies = [
- "csv-core",
- "itoa",
- "ryu",
- "serde_core",
-]
-
-[[package]]
-name = "csv-core"
-version = "0.1.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "704a3c26996a80471189265814dbc2c257598b96b8a7feae2d31ace646bb9782"
-dependencies = [
- "memchr",
 ]
 
 [[package]]
@@ -675,23 +575,13 @@ dependencies = [
 
 [[package]]
 name = "digest"
-version = "0.10.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9ed9a281f7bc9b7576e61468ba615a66a5c8cfdff42420a70aa82701a3b1e292"
-dependencies = [
- "block-buffer 0.10.4",
- "crypto-common 0.1.7",
-]
-
-[[package]]
-name = "digest"
 version = "0.11.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f1dd6dbb5841937940781866fa1281a1ff7bd3bf827091440879f9994983d5c2"
 dependencies = [
- "block-buffer 0.12.0",
+ "block-buffer",
  "const-oid",
- "crypto-common 0.2.1",
+ "crypto-common",
 ]
 
 [[package]]
@@ -924,16 +814,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "generic-array"
-version = "0.14.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "85649ca51fd72272d7821adaf274ad91c288277713d9c18820d8499a7ff69e9a"
-dependencies = [
- "typenum",
- "version_check",
-]
-
-[[package]]
 name = "getrandom"
 version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1074,42 +954,49 @@ checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 
 [[package]]
 name = "hf-hub"
-version = "1.0.0"
-source = "git+https://github.com/DePasqualeOrg/hf-hub?rev=ad3f31b675bd5f407013159ac5eb66f7e4daebbd#ad3f31b675bd5f407013159ac5eb66f7e4daebbd"
+version = "1.1.0"
+source = "git+https://github.com/DePasqualeOrg/hf-hub?rev=cecf06800d89343a23bfbd6d6be649972157a0cc#cecf06800d89343a23bfbd6d6be649972157a0cc"
 dependencies = [
  "base64",
  "bon",
  "bytes",
  "futures",
+ "getrandom 0.2.17",
  "globset",
  "hf-xet",
  "hyper",
  "pathdiff",
+ "percent-encoding",
  "reqwest",
  "serde",
  "serde_json",
- "sha2 0.11.0",
+ "sha2",
  "thiserror",
  "tokio",
  "tokio-retry",
  "tokio-util",
+ "tower-http",
  "tracing",
  "url",
+ "wasm-bindgen-futures",
 ]
 
 [[package]]
 name = "hf-xet"
-version = "1.5.2"
-source = "git+https://github.com/DePasqualeOrg/xet-core?rev=b8c8a0194a73ccb2ee3211146672612b80c0b416#b8c8a0194a73ccb2ee3211146672612b80c0b416"
+version = "1.6.0"
+source = "git+https://github.com/DePasqualeOrg/xet-core?rev=73faf1a632e77ee0c201f0bb04419e58d9dad8e7#73faf1a632e77ee0c201f0bb04419e58d9dad8e7"
 dependencies = [
+ "anyhow",
  "async-trait",
  "bytes",
  "http",
  "more-asserts",
  "serde",
+ "serde_json",
  "thiserror",
  "tokio",
  "tokio-util",
+ "tokio_with_wasm",
  "tracing",
  "uuid",
  "xet-client",
@@ -1422,12 +1309,6 @@ name = "ipnet"
 version = "2.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d98f6fed1fde3f8c21bc40a1abb88dd75e67924f9cffc3ef95607bad8017f8e2"
-
-[[package]]
-name = "is_terminal_polyfill"
-version = "1.70.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a6cb138bb79a146c1bd460005623e142ef0181e3d0219cb493e02f7d08a35695"
 
 [[package]]
 name = "itertools"
@@ -1751,12 +1632,6 @@ name = "once_cell"
 version = "1.21.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
-
-[[package]]
-name = "once_cell_polyfill"
-version = "1.70.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 
 [[package]]
 name = "oneshot"
@@ -2432,34 +2307,13 @@ dependencies = [
 
 [[package]]
 name = "sha2"
-version = "0.10.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a7507d819769d01a365ab707794a4084392c824f54a7a6a7862f8c3d0892b283"
-dependencies = [
- "cfg-if 1.0.4",
- "cpufeatures 0.2.17",
- "digest 0.10.7",
- "sha2-asm",
-]
-
-[[package]]
-name = "sha2"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "446ba717509524cb3f22f17ecc096f10f4822d76ab5c0b9822c5f9c284e825f4"
 dependencies = [
  "cfg-if 1.0.4",
- "cpufeatures 0.3.0",
- "digest 0.11.3",
-]
-
-[[package]]
-name = "sha2-asm"
-version = "0.6.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b845214d6175804686b2bd482bcffe96651bb2d1200742b712003504a2dac1ab"
-dependencies = [
- "cc",
+ "cpufeatures",
+ "digest",
 ]
 
 [[package]]
@@ -2822,6 +2676,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "tokio_with_wasm"
+version = "0.8.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "34e40fbbbd95441133fe9483f522db15dbfd26dc636164ebd8f2dd28759a6aa6"
+dependencies = [
+ "js-sys",
+ "tokio",
+ "tokio_with_wasm_proc",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+]
+
+[[package]]
+name = "tokio_with_wasm_proc"
+version = "0.8.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d01145a2c788d6aae4cd653afec1e8332534d7d783d01897cefcafe4428de992"
+dependencies = [
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "toml"
 version = "1.1.2+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3036,8 +2914,8 @@ checksum = "ebc1c04c71510c7f702b52b7c350734c9ff1295c464a03335b00bb84fc54f853"
 
 [[package]]
 name = "uniffi"
-version = "0.31.1"
-source = "git+https://github.com/DePasqualeOrg/uniffi-rs.git?rev=e3e99802532ba76887b21a38de926dd55f469d48#e3e99802532ba76887b21a38de926dd55f469d48"
+version = "0.32.0"
+source = "git+https://github.com/DePasqualeOrg/uniffi-rs.git?rev=4c3b6c69c17e90edd54111ad2b0e19ce4a5f9280#4c3b6c69c17e90edd54111ad2b0e19ce4a5f9280"
 dependencies = [
  "anyhow",
  "camino",
@@ -3051,8 +2929,8 @@ dependencies = [
 
 [[package]]
 name = "uniffi_bindgen"
-version = "0.31.1"
-source = "git+https://github.com/DePasqualeOrg/uniffi-rs.git?rev=e3e99802532ba76887b21a38de926dd55f469d48#e3e99802532ba76887b21a38de926dd55f469d48"
+version = "0.32.0"
+source = "git+https://github.com/DePasqualeOrg/uniffi-rs.git?rev=4c3b6c69c17e90edd54111ad2b0e19ce4a5f9280#4c3b6c69c17e90edd54111ad2b0e19ce4a5f9280"
 dependencies = [
  "anyhow",
  "askama",
@@ -3076,8 +2954,8 @@ dependencies = [
 
 [[package]]
 name = "uniffi_core"
-version = "0.31.1"
-source = "git+https://github.com/DePasqualeOrg/uniffi-rs.git?rev=e3e99802532ba76887b21a38de926dd55f469d48#e3e99802532ba76887b21a38de926dd55f469d48"
+version = "0.32.0"
+source = "git+https://github.com/DePasqualeOrg/uniffi-rs.git?rev=4c3b6c69c17e90edd54111ad2b0e19ce4a5f9280#4c3b6c69c17e90edd54111ad2b0e19ce4a5f9280"
 dependencies = [
  "anyhow",
  "async-compat",
@@ -3088,8 +2966,8 @@ dependencies = [
 
 [[package]]
 name = "uniffi_internal_macros"
-version = "0.31.1"
-source = "git+https://github.com/DePasqualeOrg/uniffi-rs.git?rev=e3e99802532ba76887b21a38de926dd55f469d48#e3e99802532ba76887b21a38de926dd55f469d48"
+version = "0.32.0"
+source = "git+https://github.com/DePasqualeOrg/uniffi-rs.git?rev=4c3b6c69c17e90edd54111ad2b0e19ce4a5f9280#4c3b6c69c17e90edd54111ad2b0e19ce4a5f9280"
 dependencies = [
  "anyhow",
  "indexmap",
@@ -3100,8 +2978,8 @@ dependencies = [
 
 [[package]]
 name = "uniffi_macros"
-version = "0.31.1"
-source = "git+https://github.com/DePasqualeOrg/uniffi-rs.git?rev=e3e99802532ba76887b21a38de926dd55f469d48#e3e99802532ba76887b21a38de926dd55f469d48"
+version = "0.32.0"
+source = "git+https://github.com/DePasqualeOrg/uniffi-rs.git?rev=4c3b6c69c17e90edd54111ad2b0e19ce4a5f9280#4c3b6c69c17e90edd54111ad2b0e19ce4a5f9280"
 dependencies = [
  "camino",
  "fs-err",
@@ -3116,8 +2994,8 @@ dependencies = [
 
 [[package]]
 name = "uniffi_meta"
-version = "0.31.1"
-source = "git+https://github.com/DePasqualeOrg/uniffi-rs.git?rev=e3e99802532ba76887b21a38de926dd55f469d48#e3e99802532ba76887b21a38de926dd55f469d48"
+version = "0.32.0"
+source = "git+https://github.com/DePasqualeOrg/uniffi-rs.git?rev=4c3b6c69c17e90edd54111ad2b0e19ce4a5f9280#4c3b6c69c17e90edd54111ad2b0e19ce4a5f9280"
 dependencies = [
  "anyhow",
  "siphasher",
@@ -3127,8 +3005,8 @@ dependencies = [
 
 [[package]]
 name = "uniffi_pipeline"
-version = "0.31.1"
-source = "git+https://github.com/DePasqualeOrg/uniffi-rs.git?rev=e3e99802532ba76887b21a38de926dd55f469d48#e3e99802532ba76887b21a38de926dd55f469d48"
+version = "0.32.0"
+source = "git+https://github.com/DePasqualeOrg/uniffi-rs.git?rev=4c3b6c69c17e90edd54111ad2b0e19ce4a5f9280#4c3b6c69c17e90edd54111ad2b0e19ce4a5f9280"
 dependencies = [
  "anyhow",
  "heck",
@@ -3139,8 +3017,8 @@ dependencies = [
 
 [[package]]
 name = "uniffi_udl"
-version = "0.31.1"
-source = "git+https://github.com/DePasqualeOrg/uniffi-rs.git?rev=e3e99802532ba76887b21a38de926dd55f469d48#e3e99802532ba76887b21a38de926dd55f469d48"
+version = "0.32.0"
+source = "git+https://github.com/DePasqualeOrg/uniffi-rs.git?rev=4c3b6c69c17e90edd54111ad2b0e19ce4a5f9280#4c3b6c69c17e90edd54111ad2b0e19ce4a5f9280"
 dependencies = [
  "anyhow",
  "textwrap",
@@ -3179,12 +3057,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6c140620e7ffbb22c2dee59cafe6084a59b5ffc27a8859a5f0d494b5d52b6be"
 
 [[package]]
-name = "utf8parse"
-version = "0.2.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
-
-[[package]]
 name = "uuid"
 version = "1.23.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3206,12 +3078,6 @@ name = "vcpkg"
 version = "0.2.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "accd4ea62f7bb7a82fe23066fb0957d48ef677f6eeb8215f372f52e48bb32426"
-
-[[package]]
-name = "version_check"
-version = "0.9.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "walkdir"
@@ -3408,7 +3274,7 @@ dependencies = [
 [[package]]
 name = "weedle2"
 version = "5.0.0"
-source = "git+https://github.com/DePasqualeOrg/uniffi-rs.git?rev=e3e99802532ba76887b21a38de926dd55f469d48#e3e99802532ba76887b21a38de926dd55f469d48"
+source = "git+https://github.com/DePasqualeOrg/uniffi-rs.git?rev=4c3b6c69c17e90edd54111ad2b0e19ce4a5f9280#4c3b6c69c17e90edd54111ad2b0e19ce4a5f9280"
 dependencies = [
  "nom",
 ]
@@ -3845,19 +3711,18 @@ checksum = "1ffae5123b2d3fc086436f8834ae3ab053a283cfac8fe0a0b8eaae044768a4c4"
 
 [[package]]
 name = "xet-client"
-version = "1.5.2"
-source = "git+https://github.com/DePasqualeOrg/xet-core?rev=b8c8a0194a73ccb2ee3211146672612b80c0b416#b8c8a0194a73ccb2ee3211146672612b80c0b416"
+version = "1.6.0"
+source = "git+https://github.com/DePasqualeOrg/xet-core?rev=73faf1a632e77ee0c201f0bb04419e58d9dad8e7#73faf1a632e77ee0c201f0bb04419e58d9dad8e7"
 dependencies = [
  "anyhow",
  "async-trait",
  "base64",
  "bytes",
- "clap",
+ "chrono",
  "crc32fast",
  "futures",
  "http",
  "hyper",
- "lazy_static",
  "more-asserts",
  "rand 0.10.1",
  "redb",
@@ -3871,10 +3736,11 @@ dependencies = [
  "thiserror",
  "tokio",
  "tokio-retry",
+ "tokio_with_wasm",
  "tracing",
- "tracing-subscriber",
  "url",
  "urlencoding",
+ "uuid",
  "web-time",
  "xet-core-structures",
  "xet-runtime",
@@ -3882,23 +3748,20 @@ dependencies = [
 
 [[package]]
 name = "xet-core-structures"
-version = "1.5.2"
-source = "git+https://github.com/DePasqualeOrg/xet-core?rev=b8c8a0194a73ccb2ee3211146672612b80c0b416#b8c8a0194a73ccb2ee3211146672612b80c0b416"
+version = "1.6.0"
+source = "git+https://github.com/DePasqualeOrg/xet-core?rev=73faf1a632e77ee0c201f0bb04419e58d9dad8e7#73faf1a632e77ee0c201f0bb04419e58d9dad8e7"
 dependencies = [
  "async-trait",
  "base64",
  "blake3",
  "bytemuck",
  "bytes",
- "clap",
  "countio",
- "csv",
  "futures",
  "futures-util",
  "getrandom 0.4.2",
  "heapify",
  "itertools",
- "lazy_static",
  "lz4_flex",
  "more-asserts",
  "rand 0.10.1",
@@ -3906,7 +3769,6 @@ dependencies = [
  "safe-transmute",
  "serde",
  "static_assertions",
- "tempfile",
  "thiserror",
  "tokio",
  "tokio-util",
@@ -3918,31 +3780,30 @@ dependencies = [
 
 [[package]]
 name = "xet-data"
-version = "1.5.2"
-source = "git+https://github.com/DePasqualeOrg/xet-core?rev=b8c8a0194a73ccb2ee3211146672612b80c0b416#b8c8a0194a73ccb2ee3211146672612b80c0b416"
+version = "1.6.0"
+source = "git+https://github.com/DePasqualeOrg/xet-core?rev=73faf1a632e77ee0c201f0bb04419e58d9dad8e7#73faf1a632e77ee0c201f0bb04419e58d9dad8e7"
 dependencies = [
  "anyhow",
  "async-trait",
  "bytes",
  "chrono",
- "clap",
  "gearhash",
  "http",
  "itertools",
- "lazy_static",
  "more-asserts",
  "rand 0.10.1",
  "serde",
  "serde_json",
- "sha2 0.10.9",
+ "sha2",
  "tempfile",
  "thiserror",
  "tokio",
  "tokio-util",
+ "tokio_with_wasm",
  "tracing",
  "url",
  "uuid",
- "walkdir",
+ "web-time",
  "xet-client",
  "xet-core-structures",
  "xet-runtime",
@@ -3950,8 +3811,8 @@ dependencies = [
 
 [[package]]
 name = "xet-runtime"
-version = "1.5.2"
-source = "git+https://github.com/DePasqualeOrg/xet-core?rev=b8c8a0194a73ccb2ee3211146672612b80c0b416#b8c8a0194a73ccb2ee3211146672612b80c0b416"
+version = "1.6.0"
+source = "git+https://github.com/DePasqualeOrg/xet-core?rev=73faf1a632e77ee0c201f0bb04419e58d9dad8e7#73faf1a632e77ee0c201f0bb04419e58d9dad8e7"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3965,7 +3826,6 @@ dependencies = [
  "git-version",
  "humantime",
  "konst",
- "lazy_static",
  "libc",
  "more-asserts",
  "oneshot",
@@ -3979,9 +3839,11 @@ dependencies = [
  "thiserror",
  "tokio",
  "tokio-util",
+ "tokio_with_wasm",
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
+ "web-time",
  "whoami",
  "winapi",
 ]

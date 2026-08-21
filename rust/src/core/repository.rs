@@ -242,7 +242,7 @@ impl HFRepositoryFFI {
         let info = client
             .model(self.owner.clone(), self.name.clone())
             .info()
-            .maybe_revision(revision)
+            .maybe_revision(revision.as_deref())
             .maybe_expand(expand)
             .send()
             .await
@@ -263,7 +263,7 @@ impl HFRepositoryFFI {
         let info = client
             .dataset(self.owner.clone(), self.name.clone())
             .info()
-            .maybe_revision(revision)
+            .maybe_revision(revision.as_deref())
             .maybe_expand(expand)
             .send()
             .await
@@ -293,7 +293,7 @@ impl HFRepositoryFFI {
             self.name.clone(),
             |repo| repo
                 .list_tree()
-                .maybe_revision(revision)
+                .maybe_revision(revision.as_deref())
                 .recursive(recursive)
                 .expand(expand)
                 .maybe_limit(limit)
@@ -323,7 +323,7 @@ impl HFRepositoryFFI {
             |repo| repo
                 .get_paths_info()
                 .paths(paths)
-                .maybe_revision(revision)
+                .maybe_revision(revision.as_deref())
                 .send()
                 .await
         )
@@ -349,7 +349,7 @@ impl HFRepositoryFFI {
             |repo| repo
                 .get_file_metadata()
                 .filepath(filepath)
-                .maybe_revision(revision)
+                .maybe_revision(revision.as_deref())
                 .send()
                 .await
         )
@@ -375,7 +375,7 @@ impl HFRepositoryFFI {
             self.name.clone(),
             |repo| repo
                 .list_commits()
-                .maybe_revision(revision)
+                .maybe_revision(revision.as_deref())
                 .maybe_limit(limit)
                 .send()
                 .map_err(HFErrorFFI::from)?
@@ -417,7 +417,7 @@ impl HFRepositoryFFI {
             client,
             self.owner.clone(),
             self.name.clone(),
-            |repo| repo.get_commit_diff().compare(compare).send().await
+            |repo| repo.get_commit_diff().compare(&compare).send().await
         )
         .map_err(HFErrorFFI::from)?;
 
@@ -432,7 +432,7 @@ impl HFRepositoryFFI {
             client,
             self.owner.clone(),
             self.name.clone(),
-            |repo| repo.get_raw_diff().compare(compare).send().await
+            |repo| repo.get_raw_diff().compare(&compare).send().await
         )
         .map_err(HFErrorFFI::from)?;
 
@@ -451,7 +451,7 @@ impl HFRepositoryFFI {
             self.name.clone(),
             |repo| repo
                 .get_raw_diff_stream()
-                .compare(compare)
+                .compare(&compare)
                 .send()
                 .await
                 .map_err(HFErrorFFI::from)?
@@ -502,7 +502,7 @@ impl HFRepositoryFFI {
             let result = dispatch_repo_kind!(kind, client, owner, name, |repo| repo
                 .download_file()
                 .filename(filename)
-                .maybe_revision(revision)
+                .maybe_revision(revision.as_deref())
                 .maybe_local_dir(local_dir)
                 .force_download(force_download)
                 .local_files_only(local_files_only)
@@ -544,7 +544,7 @@ impl HFRepositoryFFI {
                 dispatch_repo_kind!(kind, client, owner, name, |repo| repo
                     .download_file_stream()
                     .filename(filename)
-                    .maybe_revision(revision)
+                    .maybe_revision(revision.as_deref())
                     .maybe_progress(progress)
                     .send()
                     .await)
@@ -589,7 +589,7 @@ impl HFRepositoryFFI {
         let download_future = Box::pin(async move {
             let result = dispatch_repo_kind!(kind, client, owner, name, |repo| repo
                 .snapshot_download()
-                .maybe_revision(revision)
+                .maybe_revision(revision.as_deref())
                 .maybe_allow_patterns(allow_patterns)
                 .maybe_ignore_patterns(ignore_patterns)
                 .maybe_local_dir(local_dir)
@@ -651,8 +651,8 @@ impl HFRepositoryFFI {
             self.name.clone(),
             |repo| repo
                 .create_branch()
-                .branch(branch)
-                .maybe_revision(revision)
+                .branch(&branch)
+                .maybe_revision(revision.as_deref())
                 .send()
                 .await
         )
@@ -667,7 +667,7 @@ impl HFRepositoryFFI {
             client,
             self.owner.clone(),
             self.name.clone(),
-            |repo| repo.delete_branch().branch(branch).send().await
+            |repo| repo.delete_branch().branch(&branch).send().await
         )
         .map_err(HFErrorFFI::from)
     }
@@ -689,8 +689,8 @@ impl HFRepositoryFFI {
             self.name.clone(),
             |repo| repo
                 .create_tag()
-                .tag(tag)
-                .maybe_revision(revision)
+                .tag(&tag)
+                .maybe_revision(revision.as_deref())
                 .maybe_message(message)
                 .send()
                 .await
@@ -716,7 +716,7 @@ impl HFRepositoryFFI {
             |repo| repo
                 .delete_file()
                 .path_in_repo(path_in_repo)
-                .maybe_revision(revision)
+                .maybe_revision(revision.as_deref())
                 .maybe_commit_message(commit_message)
                 .create_pr(create_pr)
                 .send()
@@ -746,7 +746,7 @@ impl HFRepositoryFFI {
             |repo| repo
                 .delete_folder()
                 .path_in_repo(path_in_repo)
-                .maybe_revision(revision)
+                .maybe_revision(revision.as_deref())
                 .maybe_commit_message(commit_message)
                 .create_pr(create_pr)
                 .send()
@@ -764,7 +764,7 @@ impl HFRepositoryFFI {
             client,
             self.owner.clone(),
             self.name.clone(),
-            |repo| repo.delete_tag().tag(tag).send().await
+            |repo| repo.delete_tag().tag(&tag).send().await
         )
         .map_err(HFErrorFFI::from)
     }
@@ -798,7 +798,7 @@ impl HFRepositoryFFI {
                 .upload_file()
                 .source(source)
                 .path_in_repo(path_in_repo)
-                .maybe_revision(revision)
+                .maybe_revision(revision.as_deref())
                 .maybe_commit_message(commit_message)
                 .maybe_commit_description(commit_description)
                 .create_pr(create_pr)
@@ -850,7 +850,7 @@ impl HFRepositoryFFI {
                 .upload_folder()
                 .folder_path(folder_path)
                 .maybe_path_in_repo(path_in_repo)
-                .maybe_revision(revision)
+                .maybe_revision(revision.as_deref())
                 .maybe_commit_message(commit_message)
                 .maybe_commit_description(commit_description)
                 .create_pr(create_pr)
@@ -902,7 +902,7 @@ impl HFRepositoryFFI {
                 .operations(operations)
                 .commit_message(commit_message)
                 .maybe_commit_description(commit_description)
-                .maybe_revision(revision)
+                .maybe_revision(revision.as_deref())
                 .create_pr(create_pr)
                 .maybe_parent_commit(parent_commit)
                 .maybe_progress(progress)

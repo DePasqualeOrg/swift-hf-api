@@ -20,7 +20,6 @@ use hf_hub::repository::{
     RepoSibling, RepoTreeEntry, RepoUrl, SafeTensorsInfo, TransformersInfo,
 };
 use hf_hub::users::{OrgMembership, User};
-use serde_json::Value as JsonValue;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Slim DTO for `RepoSibling` – flat enough to cross the FFI without nested options.
@@ -115,11 +114,12 @@ pub struct ModelInfoDTO {
 /// `None` both for missing input and for serialization failure – the empty
 /// string is reserved for "field present, value was `null`/empty", so we
 /// can't use it as a failure sentinel without losing that distinction.
-/// Serialization of an already-parsed `Value` only fails on map keys that
-/// aren't strings, which `serde_json::Value` cannot represent – this is
-/// effectively unreachable but we surface `None` instead of corrupting the
-/// payload.
-fn encode_json(value: Option<JsonValue>) -> Option<String> {
+/// Serialization failure is effectively unreachable for these payloads – map
+/// keys are always strings – but we surface `None` instead of corrupting the
+/// payload. Generic over `T` because hf-hub returns some fields as typed
+/// structs/enums (e.g. `ModelCardData`, `GatedApprovalMode`) rather than
+/// `serde_json::Value`.
+fn encode_json<T: serde::Serialize>(value: Option<T>) -> Option<String> {
     value.and_then(|v| serde_json::to_string(&v).ok())
 }
 
@@ -864,7 +864,7 @@ mod tests {
 
     #[test]
     fn encode_json_none_returns_none() {
-        assert!(encode_json(None).is_none());
+        assert!(encode_json::<serde_json::Value>(None).is_none());
     }
 
     #[test]

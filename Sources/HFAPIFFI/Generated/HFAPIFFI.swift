@@ -40,6 +40,52 @@ fileprivate extension ForeignBytes {
     init(bufferPointer: UnsafeBufferPointer<UInt8>) {
         self.init(len: Int32(bufferPointer.count), data: bufferPointer.baseAddress)
     }
+
+    init(rawBufferPointer: UnsafeRawBufferPointer) {
+        self.init(
+            len: Int32(rawBufferPointer.count),
+            data: rawBufferPointer.baseAddress?.assumingMemoryBound(to: UInt8.self)
+        )
+    }
+}
+
+// Converter for `&[u8]` / `[ByRef] bytes` arguments.
+//
+// Conforms to `FfiConverter` so the compiler enforces the full converter
+// method set. Only the scope-bound `lower(_:_body:)` overload is sound —
+// zero-copy byte buffers only flow foreign -> Rust, and only in argument
+// position. The four protocol-witness methods (`lift`, `lower`, `read`,
+// `write`) `fatalError` at runtime if anyone reaches them.
+//
+// The scope-bound `lower` takes a closure because the `ForeignBytes`
+// pointer is only guaranteed valid for the duration of
+// `Data.withUnsafeBytes`. Callers must run the full FFI call inside
+// the closure body.
+fileprivate enum FfiConverterByRefBytes: FfiConverter {
+    typealias SwiftType = Data
+    typealias FfiType = ForeignBytes
+
+    static func lower<R>(_ value: Data, _ body: (ForeignBytes) throws -> R) rethrows -> R {
+        return try value.withUnsafeBytes { rawBuf in
+            try body(ForeignBytes(rawBufferPointer: rawBuf))
+        }
+    }
+
+    static func lower(_ value: Data) -> ForeignBytes {
+        fatalError("ByRef bytes cannot use the plain lower: returning ForeignBytes escapes the Data.withUnsafeBytes scope. Use the scope-bound lower(_:_body:) overload instead.")
+    }
+
+    static func lift(_ value: ForeignBytes) throws -> Data {
+        fatalError("ByRef bytes cannot be lifted: zero-copy &[u8] only flows foreign->Rust")
+    }
+
+    static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Data {
+        fatalError("ByRef bytes cannot be read from a buffer: zero-copy &[u8] is only supported in argument position, not nested in records/options/etc.")
+    }
+
+    static func write(_ value: Data, into buf: inout [UInt8]) {
+        fatalError("ByRef bytes cannot be written to a buffer: zero-copy &[u8] is only supported in argument position, not nested in records/options/etc.")
+    }
 }
 
 // For every type used in the interface, we provide helper methods for conveniently
@@ -649,16 +695,18 @@ open class DatasetInfoListingFfi: DatasetInfoListingFfiProtocol, @unchecked Send
 
     
 open func cancel()  {try! rustCall() {
+        uniffiCallStatus in
     uniffi_hf_api_rust_fn_method_datasetinfolistingffi_cancel(
-            self.uniffiCloneHandle(),$0
+            self.uniffiCloneHandle(),uniffiCallStatus
     )
 }
 }
     
 open func isCancelled() -> Bool  {
     return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
     uniffi_hf_api_rust_fn_method_datasetinfolistingffi_is_cancelled(
-            self.uniffiCloneHandle(),$0
+            self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
 }
@@ -668,8 +716,7 @@ open func next()async throws  -> DatasetInfoDto?  {
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_hf_api_rust_fn_method_datasetinfolistingffi_next(
-                    self.uniffiCloneHandle()
-                    
+                        self.uniffiCloneHandle()
                 )
             },
             pollFunc: ffi_hf_api_rust_rust_future_poll_rust_buffer,
@@ -821,9 +868,10 @@ open class FfiByteChunkHandlerImpl: FfiByteChunkHandler, @unchecked Sendable {
 
     
 open func onChunk(chunk: Data)  {try! rustCall() {
+        uniffiCallStatus in
     uniffi_hf_api_rust_fn_method_ffibytechunkhandler_on_chunk(
             self.uniffiCloneHandle(),
-        FfiConverterData.lower(chunk),$0
+        FfiConverterData.lower(chunk),uniffiCallStatus
     )
 }
 }
@@ -884,7 +932,11 @@ fileprivate struct UniffiCallbackInterfaceFFIByteChunkHandler {
 
     // Rust stores this pointer for future callback invocations, so it must live
     // for the process lifetime (not just for the init function call).
-    static let vtablePtr: UnsafePointer<UniffiVTableCallbackInterfaceFfiByteChunkHandler> = {
+    //
+    // `nonisolated(unsafe)` is needed under Swift 6 strict concurrency.
+    // This is safe because the pointee is initialized once during static init
+    // and never mutated by either side of the FFI.  Its fields are C function pointers.
+    nonisolated(unsafe) static let vtablePtr: UnsafePointer<UniffiVTableCallbackInterfaceFfiByteChunkHandler> = {
         let ptr = UnsafeMutablePointer<UniffiVTableCallbackInterfaceFfiByteChunkHandler>.allocate(capacity: 1)
         ptr.initialize(to: vtable)
         return UnsafePointer(ptr)
@@ -1046,9 +1098,10 @@ open class FfiDownloadProgressHandlerImpl: FfiDownloadProgressHandler, @unchecke
 
     
 open func onEvent(event: DownloadEventDto)  {try! rustCall() {
+        uniffiCallStatus in
     uniffi_hf_api_rust_fn_method_ffidownloadprogresshandler_on_event(
             self.uniffiCloneHandle(),
-        FfiConverterTypeDownloadEventDTO_lower(event),$0
+        FfiConverterTypeDownloadEventDTO_lower(event),uniffiCallStatus
     )
 }
 }
@@ -1109,7 +1162,11 @@ fileprivate struct UniffiCallbackInterfaceFFIDownloadProgressHandler {
 
     // Rust stores this pointer for future callback invocations, so it must live
     // for the process lifetime (not just for the init function call).
-    static let vtablePtr: UnsafePointer<UniffiVTableCallbackInterfaceFfiDownloadProgressHandler> = {
+    //
+    // `nonisolated(unsafe)` is needed under Swift 6 strict concurrency.
+    // This is safe because the pointee is initialized once during static init
+    // and never mutated by either side of the FFI.  Its fields are C function pointers.
+    nonisolated(unsafe) static let vtablePtr: UnsafePointer<UniffiVTableCallbackInterfaceFfiDownloadProgressHandler> = {
         let ptr = UnsafeMutablePointer<UniffiVTableCallbackInterfaceFfiDownloadProgressHandler>.allocate(capacity: 1)
         ptr.initialize(to: vtable)
         return UnsafePointer(ptr)
@@ -1248,8 +1305,9 @@ open class FfiGlobMatcher: FfiGlobMatcherProtocol, @unchecked Sendable {
      */
 public static func tryNew(pattern: String)throws  -> FfiGlobMatcher  {
     return try  FfiConverterTypeFFIGlobMatcher_lift(try rustCallWithError(FfiConverterTypeGlobMatcherErrorFFI_lift) {
+        uniffiCallStatus in
     uniffi_hf_api_rust_fn_constructor_ffiglobmatcher_try_new(
-        FfiConverterString.lower(pattern),$0
+        FfiConverterString.lower(pattern),uniffiCallStatus
     )
 })
 }
@@ -1261,9 +1319,10 @@ public static func tryNew(pattern: String)throws  -> FfiGlobMatcher  {
      */
 open func isMatch(path: String) -> Bool  {
     return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
     uniffi_hf_api_rust_fn_method_ffiglobmatcher_is_match(
             self.uniffiCloneHandle(),
-        FfiConverterString.lower(path),$0
+        FfiConverterString.lower(path),uniffiCallStatus
     )
 })
 }
@@ -1423,8 +1482,7 @@ open func getToken()async throws  -> String?  {
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_hf_api_rust_fn_method_ffitokenprovider_get_token(
-                    self.uniffiCloneHandle()
-                    
+                        self.uniffiCloneHandle()
                 )
             },
             pollFunc: ffi_hf_api_rust_rust_future_poll_rust_buffer,
@@ -1508,7 +1566,11 @@ fileprivate struct UniffiCallbackInterfaceFFITokenProvider {
 
     // Rust stores this pointer for future callback invocations, so it must live
     // for the process lifetime (not just for the init function call).
-    static let vtablePtr: UnsafePointer<UniffiVTableCallbackInterfaceFfiTokenProvider> = {
+    //
+    // `nonisolated(unsafe)` is needed under Swift 6 strict concurrency.
+    // This is safe because the pointee is initialized once during static init
+    // and never mutated by either side of the FFI.  Its fields are C function pointers.
+    nonisolated(unsafe) static let vtablePtr: UnsafePointer<UniffiVTableCallbackInterfaceFfiTokenProvider> = {
         let ptr = UnsafeMutablePointer<UniffiVTableCallbackInterfaceFfiTokenProvider>.allocate(capacity: 1)
         ptr.initialize(to: vtable)
         return UnsafePointer(ptr)
@@ -1654,9 +1716,10 @@ open class FfiUploadProgressHandlerImpl: FfiUploadProgressHandler, @unchecked Se
 
     
 open func onEvent(event: UploadEventDto)  {try! rustCall() {
+        uniffiCallStatus in
     uniffi_hf_api_rust_fn_method_ffiuploadprogresshandler_on_event(
             self.uniffiCloneHandle(),
-        FfiConverterTypeUploadEventDTO_lower(event),$0
+        FfiConverterTypeUploadEventDTO_lower(event),uniffiCallStatus
     )
 }
 }
@@ -1717,7 +1780,11 @@ fileprivate struct UniffiCallbackInterfaceFFIUploadProgressHandler {
 
     // Rust stores this pointer for future callback invocations, so it must live
     // for the process lifetime (not just for the init function call).
-    static let vtablePtr: UnsafePointer<UniffiVTableCallbackInterfaceFfiUploadProgressHandler> = {
+    //
+    // `nonisolated(unsafe)` is needed under Swift 6 strict concurrency.
+    // This is safe because the pointee is initialized once during static init
+    // and never mutated by either side of the FFI.  Its fields are C function pointers.
+    nonisolated(unsafe) static let vtablePtr: UnsafePointer<UniffiVTableCallbackInterfaceFfiUploadProgressHandler> = {
         let ptr = UnsafeMutablePointer<UniffiVTableCallbackInterfaceFfiUploadProgressHandler>.allocate(capacity: 1)
         ptr.initialize(to: vtable)
         return UnsafePointer(ptr)
@@ -1936,8 +2003,9 @@ open class HfClientFfi: HfClientFfiProtocol, @unchecked Sendable {
 public convenience init(options: HfClientOptionsDto)throws  {
     let handle =
         try rustCallWithError(FfiConverterTypeHFErrorFFI_lift) {
+        uniffiCallStatus in
     uniffi_hf_api_rust_fn_constructor_hfclientffi_new(
-        FfiConverterTypeHFClientOptionsDTO_lower(options),$0
+        FfiConverterTypeHFClientOptionsDTO_lower(options),uniffiCallStatus
     )
 }
     self.init(unsafeFromHandle: handle)
@@ -1962,9 +2030,10 @@ public convenience init(options: HfClientOptionsDto)throws  {
      */
 public static func withTokenProvider(options: HfClientOptionsDto, provider: FfiTokenProvider)throws  -> HfClientFfi  {
     return try  FfiConverterTypeHFClientFFI_lift(try rustCallWithError(FfiConverterTypeHFErrorFFI_lift) {
+        uniffiCallStatus in
     uniffi_hf_api_rust_fn_constructor_hfclientffi_with_token_provider(
         FfiConverterTypeHFClientOptionsDTO_lower(options),
-        FfiConverterTypeFFITokenProvider_lower(provider),$0
+        FfiConverterTypeFFITokenProvider_lower(provider),uniffiCallStatus
     )
 })
 }
@@ -1976,8 +2045,9 @@ public static func withTokenProvider(options: HfClientOptionsDto, provider: FfiT
      */
 open func cacheDir() -> String  {
     return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
     uniffi_hf_api_rust_fn_method_hfclientffi_cache_dir(
-            self.uniffiCloneHandle(),$0
+            self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
 }
@@ -1987,8 +2057,9 @@ open func cacheDir() -> String  {
      */
 open func cacheEnabled() -> Bool  {
     return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
     uniffi_hf_api_rust_fn_method_hfclientffi_cache_enabled(
-            self.uniffiCloneHandle(),$0
+            self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
 }
@@ -2004,8 +2075,7 @@ open func createRepository(repoId: String, kind: RepoTypeDto, `private`: Bool?, 
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_hf_api_rust_fn_method_hfclientffi_create_repository(
-                    self.uniffiCloneHandle(),
-                    FfiConverterString.lower(repoId),FfiConverterTypeRepoTypeDTO_lower(kind),FfiConverterOptionBool.lower(`private`),FfiConverterBool.lower(existOk),FfiConverterOptionString.lower(spaceSdk)
+                        self.uniffiCloneHandle(),FfiConverterString.lower(repoId),FfiConverterTypeRepoTypeDTO_lower(kind),FfiConverterOptionBool.lower(`private`),FfiConverterBool.lower(existOk),FfiConverterOptionString.lower(spaceSdk)
                 )
             },
             pollFunc: ffi_hf_api_rust_rust_future_poll_rust_buffer,
@@ -2021,10 +2091,11 @@ open func createRepository(repoId: String, kind: RepoTypeDto, `private`: Bool?, 
      */
 open func dataset(owner: String, name: String) -> HfRepositoryFfi  {
     return try!  FfiConverterTypeHFRepositoryFFI_lift(try! rustCall() {
+        uniffiCallStatus in
     uniffi_hf_api_rust_fn_method_hfclientffi_dataset(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(owner),
-        FfiConverterString.lower(name),$0
+        FfiConverterString.lower(name),uniffiCallStatus
     )
 })
 }
@@ -2038,8 +2109,7 @@ open func deleteRepository(repoId: String, kind: RepoTypeDto, missingOk: Bool)as
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_hf_api_rust_fn_method_hfclientffi_delete_repository(
-                    self.uniffiCloneHandle(),
-                    FfiConverterString.lower(repoId),FfiConverterTypeRepoTypeDTO_lower(kind),FfiConverterBool.lower(missingOk)
+                        self.uniffiCloneHandle(),FfiConverterString.lower(repoId),FfiConverterTypeRepoTypeDTO_lower(kind),FfiConverterBool.lower(missingOk)
                 )
             },
             pollFunc: ffi_hf_api_rust_rust_future_poll_void,
@@ -2055,8 +2125,9 @@ open func deleteRepository(repoId: String, kind: RepoTypeDto, missingOk: Bool)as
      */
 open func endpoint() -> String  {
     return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
     uniffi_hf_api_rust_fn_method_hfclientffi_endpoint(
-            self.uniffiCloneHandle(),$0
+            self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
 }
@@ -2070,8 +2141,7 @@ open func listDatasets(search: String?, author: String?, filter: String?, sort: 
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_hf_api_rust_fn_method_hfclientffi_list_datasets(
-                    self.uniffiCloneHandle(),
-                    FfiConverterOptionString.lower(search),FfiConverterOptionString.lower(author),FfiConverterOptionString.lower(filter),FfiConverterOptionString.lower(sort),FfiConverterOptionBool.lower(full),FfiConverterOptionUInt64.lower(limit)
+                        self.uniffiCloneHandle(),FfiConverterOptionString.lower(search),FfiConverterOptionString.lower(author),FfiConverterOptionString.lower(filter),FfiConverterOptionString.lower(sort),FfiConverterOptionBool.lower(full),FfiConverterOptionUInt64.lower(limit)
                 )
             },
             pollFunc: ffi_hf_api_rust_rust_future_poll_rust_buffer,
@@ -2092,8 +2162,7 @@ open func listDatasetsStream(search: String?, author: String?, filter: String?, 
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_hf_api_rust_fn_method_hfclientffi_list_datasets_stream(
-                    self.uniffiCloneHandle(),
-                    FfiConverterOptionString.lower(search),FfiConverterOptionString.lower(author),FfiConverterOptionString.lower(filter),FfiConverterOptionString.lower(sort),FfiConverterOptionBool.lower(full),FfiConverterOptionUInt64.lower(limit)
+                        self.uniffiCloneHandle(),FfiConverterOptionString.lower(search),FfiConverterOptionString.lower(author),FfiConverterOptionString.lower(filter),FfiConverterOptionString.lower(sort),FfiConverterOptionBool.lower(full),FfiConverterOptionUInt64.lower(limit)
                 )
             },
             pollFunc: ffi_hf_api_rust_rust_future_poll_u64,
@@ -2115,8 +2184,7 @@ open func listModels(search: String?, author: String?, filter: String?, sort: St
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_hf_api_rust_fn_method_hfclientffi_list_models(
-                    self.uniffiCloneHandle(),
-                    FfiConverterOptionString.lower(search),FfiConverterOptionString.lower(author),FfiConverterOptionString.lower(filter),FfiConverterOptionString.lower(sort),FfiConverterOptionString.lower(pipelineTag),FfiConverterOptionBool.lower(full),FfiConverterOptionBool.lower(cardData),FfiConverterOptionBool.lower(fetchConfig),FfiConverterOptionUInt64.lower(limit)
+                        self.uniffiCloneHandle(),FfiConverterOptionString.lower(search),FfiConverterOptionString.lower(author),FfiConverterOptionString.lower(filter),FfiConverterOptionString.lower(sort),FfiConverterOptionString.lower(pipelineTag),FfiConverterOptionBool.lower(full),FfiConverterOptionBool.lower(cardData),FfiConverterOptionBool.lower(fetchConfig),FfiConverterOptionUInt64.lower(limit)
                 )
             },
             pollFunc: ffi_hf_api_rust_rust_future_poll_rust_buffer,
@@ -2145,8 +2213,7 @@ open func listModelsStream(search: String?, author: String?, filter: String?, so
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_hf_api_rust_fn_method_hfclientffi_list_models_stream(
-                    self.uniffiCloneHandle(),
-                    FfiConverterOptionString.lower(search),FfiConverterOptionString.lower(author),FfiConverterOptionString.lower(filter),FfiConverterOptionString.lower(sort),FfiConverterOptionString.lower(pipelineTag),FfiConverterOptionBool.lower(full),FfiConverterOptionBool.lower(cardData),FfiConverterOptionBool.lower(fetchConfig),FfiConverterOptionUInt64.lower(limit)
+                        self.uniffiCloneHandle(),FfiConverterOptionString.lower(search),FfiConverterOptionString.lower(author),FfiConverterOptionString.lower(filter),FfiConverterOptionString.lower(sort),FfiConverterOptionString.lower(pipelineTag),FfiConverterOptionBool.lower(full),FfiConverterOptionBool.lower(cardData),FfiConverterOptionBool.lower(fetchConfig),FfiConverterOptionUInt64.lower(limit)
                 )
             },
             pollFunc: ffi_hf_api_rust_rust_future_poll_u64,
@@ -2163,10 +2230,11 @@ open func listModelsStream(search: String?, author: String?, filter: String?, so
      */
 open func model(owner: String, name: String) -> HfRepositoryFfi  {
     return try!  FfiConverterTypeHFRepositoryFFI_lift(try! rustCall() {
+        uniffiCallStatus in
     uniffi_hf_api_rust_fn_method_hfclientffi_model(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(owner),
-        FfiConverterString.lower(name),$0
+        FfiConverterString.lower(name),uniffiCallStatus
     )
 })
 }
@@ -2180,8 +2248,7 @@ open func moveRepository(fromId: String, toId: String, kind: RepoTypeDto)async t
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_hf_api_rust_fn_method_hfclientffi_move_repository(
-                    self.uniffiCloneHandle(),
-                    FfiConverterString.lower(fromId),FfiConverterString.lower(toId),FfiConverterTypeRepoTypeDTO_lower(kind)
+                        self.uniffiCloneHandle(),FfiConverterString.lower(fromId),FfiConverterString.lower(toId),FfiConverterTypeRepoTypeDTO_lower(kind)
                 )
             },
             pollFunc: ffi_hf_api_rust_rust_future_poll_rust_buffer,
@@ -2204,8 +2271,7 @@ open func scanCache()async throws  -> HfCacheInfoDto  {
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_hf_api_rust_fn_method_hfclientffi_scan_cache(
-                    self.uniffiCloneHandle()
-                    
+                        self.uniffiCloneHandle()
                 )
             },
             pollFunc: ffi_hf_api_rust_rust_future_poll_rust_buffer,
@@ -2225,8 +2291,7 @@ open func whoami()async throws  -> UserDto  {
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_hf_api_rust_fn_method_hfclientffi_whoami(
-                    self.uniffiCloneHandle()
-                    
+                        self.uniffiCloneHandle()
                 )
             },
             pollFunc: ffi_hf_api_rust_rust_future_poll_rust_buffer,
@@ -2538,8 +2603,7 @@ open func createBranch(branch: String, revision: String?)async throws   {
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_hf_api_rust_fn_method_hfrepositoryffi_create_branch(
-                    self.uniffiCloneHandle(),
-                    FfiConverterString.lower(branch),FfiConverterOptionString.lower(revision)
+                        self.uniffiCloneHandle(),FfiConverterString.lower(branch),FfiConverterOptionString.lower(revision)
                 )
             },
             pollFunc: ffi_hf_api_rust_rust_future_poll_void,
@@ -2564,8 +2628,7 @@ open func createCommit(operations: [CommitOperationDto], commitMessage: String, 
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_hf_api_rust_fn_method_hfrepositoryffi_create_commit(
-                    self.uniffiCloneHandle(),
-                    FfiConverterSequenceTypeCommitOperationDTO.lower(operations),FfiConverterString.lower(commitMessage),FfiConverterOptionString.lower(commitDescription),FfiConverterOptionString.lower(revision),FfiConverterBool.lower(createPr),FfiConverterOptionString.lower(parentCommit),FfiConverterOptionTypeOperationHandle.lower(handle),FfiConverterOptionTypeFFIUploadProgressHandler.lower(progress)
+                        self.uniffiCloneHandle(),FfiConverterSequenceTypeCommitOperationDTO.lower(operations),FfiConverterString.lower(commitMessage),FfiConverterOptionString.lower(commitDescription),FfiConverterOptionString.lower(revision),FfiConverterBool.lower(createPr),FfiConverterOptionString.lower(parentCommit),FfiConverterOptionTypeOperationHandle.lower(handle),FfiConverterOptionTypeFFIUploadProgressHandler.lower(progress)
                 )
             },
             pollFunc: ffi_hf_api_rust_rust_future_poll_rust_buffer,
@@ -2586,8 +2649,7 @@ open func createTag(tag: String, revision: String?, message: String?)async throw
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_hf_api_rust_fn_method_hfrepositoryffi_create_tag(
-                    self.uniffiCloneHandle(),
-                    FfiConverterString.lower(tag),FfiConverterOptionString.lower(revision),FfiConverterOptionString.lower(message)
+                        self.uniffiCloneHandle(),FfiConverterString.lower(tag),FfiConverterOptionString.lower(revision),FfiConverterOptionString.lower(message)
                 )
             },
             pollFunc: ffi_hf_api_rust_rust_future_poll_void,
@@ -2606,8 +2668,7 @@ open func deleteBranch(branch: String)async throws   {
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_hf_api_rust_fn_method_hfrepositoryffi_delete_branch(
-                    self.uniffiCloneHandle(),
-                    FfiConverterString.lower(branch)
+                        self.uniffiCloneHandle(),FfiConverterString.lower(branch)
                 )
             },
             pollFunc: ffi_hf_api_rust_rust_future_poll_void,
@@ -2627,8 +2688,7 @@ open func deleteFile(pathInRepo: String, revision: String?, commitMessage: Strin
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_hf_api_rust_fn_method_hfrepositoryffi_delete_file(
-                    self.uniffiCloneHandle(),
-                    FfiConverterString.lower(pathInRepo),FfiConverterOptionString.lower(revision),FfiConverterOptionString.lower(commitMessage),FfiConverterBool.lower(createPr)
+                        self.uniffiCloneHandle(),FfiConverterString.lower(pathInRepo),FfiConverterOptionString.lower(revision),FfiConverterOptionString.lower(commitMessage),FfiConverterBool.lower(createPr)
                 )
             },
             pollFunc: ffi_hf_api_rust_rust_future_poll_rust_buffer,
@@ -2650,8 +2710,7 @@ open func deleteFolder(pathInRepo: String, revision: String?, commitMessage: Str
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_hf_api_rust_fn_method_hfrepositoryffi_delete_folder(
-                    self.uniffiCloneHandle(),
-                    FfiConverterString.lower(pathInRepo),FfiConverterOptionString.lower(revision),FfiConverterOptionString.lower(commitMessage),FfiConverterBool.lower(createPr)
+                        self.uniffiCloneHandle(),FfiConverterString.lower(pathInRepo),FfiConverterOptionString.lower(revision),FfiConverterOptionString.lower(commitMessage),FfiConverterBool.lower(createPr)
                 )
             },
             pollFunc: ffi_hf_api_rust_rust_future_poll_rust_buffer,
@@ -2670,8 +2729,7 @@ open func deleteTag(tag: String)async throws   {
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_hf_api_rust_fn_method_hfrepositoryffi_delete_tag(
-                    self.uniffiCloneHandle(),
-                    FfiConverterString.lower(tag)
+                        self.uniffiCloneHandle(),FfiConverterString.lower(tag)
                 )
             },
             pollFunc: ffi_hf_api_rust_rust_future_poll_void,
@@ -2691,8 +2749,7 @@ open func downloadFileStream(filename: String, revision: String?, handle: Operat
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_hf_api_rust_fn_method_hfrepositoryffi_download_file_stream(
-                    self.uniffiCloneHandle(),
-                    FfiConverterString.lower(filename),FfiConverterOptionString.lower(revision),FfiConverterOptionTypeOperationHandle.lower(handle),FfiConverterOptionTypeFFIDownloadProgressHandler.lower(progress),FfiConverterTypeFFIByteChunkHandler_lower(chunks)
+                        self.uniffiCloneHandle(),FfiConverterString.lower(filename),FfiConverterOptionString.lower(revision),FfiConverterOptionTypeOperationHandle.lower(handle),FfiConverterOptionTypeFFIDownloadProgressHandler.lower(progress),FfiConverterTypeFFIByteChunkHandler_lower(chunks)
                 )
             },
             pollFunc: ffi_hf_api_rust_rust_future_poll_rust_buffer,
@@ -2724,8 +2781,7 @@ open func downloadFileToCache(filename: String, revision: String?, localDir: Str
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_hf_api_rust_fn_method_hfrepositoryffi_download_file_to_cache(
-                    self.uniffiCloneHandle(),
-                    FfiConverterString.lower(filename),FfiConverterOptionString.lower(revision),FfiConverterOptionString.lower(localDir),FfiConverterBool.lower(forceDownload),FfiConverterBool.lower(localFilesOnly),FfiConverterOptionTypeOperationHandle.lower(handle),FfiConverterOptionTypeFFIDownloadProgressHandler.lower(progress)
+                        self.uniffiCloneHandle(),FfiConverterString.lower(filename),FfiConverterOptionString.lower(revision),FfiConverterOptionString.lower(localDir),FfiConverterBool.lower(forceDownload),FfiConverterBool.lower(localFilesOnly),FfiConverterOptionTypeOperationHandle.lower(handle),FfiConverterOptionTypeFFIDownloadProgressHandler.lower(progress)
                 )
             },
             pollFunc: ffi_hf_api_rust_rust_future_poll_rust_buffer,
@@ -2746,8 +2802,7 @@ open func exists()async throws  -> Bool  {
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_hf_api_rust_fn_method_hfrepositoryffi_exists(
-                    self.uniffiCloneHandle()
-                    
+                        self.uniffiCloneHandle()
                 )
             },
             pollFunc: ffi_hf_api_rust_rust_future_poll_i8,
@@ -2768,8 +2823,7 @@ open func getCommitDiff(compare: String)async throws  -> String  {
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_hf_api_rust_fn_method_hfrepositoryffi_get_commit_diff(
-                    self.uniffiCloneHandle(),
-                    FfiConverterString.lower(compare)
+                        self.uniffiCloneHandle(),FfiConverterString.lower(compare)
                 )
             },
             pollFunc: ffi_hf_api_rust_rust_future_poll_rust_buffer,
@@ -2790,8 +2844,7 @@ open func getFileMetadata(filepath: String, revision: String?)async throws  -> F
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_hf_api_rust_fn_method_hfrepositoryffi_get_file_metadata(
-                    self.uniffiCloneHandle(),
-                    FfiConverterString.lower(filepath),FfiConverterOptionString.lower(revision)
+                        self.uniffiCloneHandle(),FfiConverterString.lower(filepath),FfiConverterOptionString.lower(revision)
                 )
             },
             pollFunc: ffi_hf_api_rust_rust_future_poll_rust_buffer,
@@ -2811,8 +2864,7 @@ open func getPathsInfo(paths: [String], revision: String?)async throws  -> [Repo
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_hf_api_rust_fn_method_hfrepositoryffi_get_paths_info(
-                    self.uniffiCloneHandle(),
-                    FfiConverterSequenceString.lower(paths),FfiConverterOptionString.lower(revision)
+                        self.uniffiCloneHandle(),FfiConverterSequenceString.lower(paths),FfiConverterOptionString.lower(revision)
                 )
             },
             pollFunc: ffi_hf_api_rust_rust_future_poll_rust_buffer,
@@ -2831,8 +2883,7 @@ open func getRawDiff(compare: String)async throws  -> String  {
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_hf_api_rust_fn_method_hfrepositoryffi_get_raw_diff(
-                    self.uniffiCloneHandle(),
-                    FfiConverterString.lower(compare)
+                        self.uniffiCloneHandle(),FfiConverterString.lower(compare)
                 )
             },
             pollFunc: ffi_hf_api_rust_rust_future_poll_rust_buffer,
@@ -2853,8 +2904,7 @@ open func getRawDiffStream(compare: String)async throws  -> [HfFileDiffDto]  {
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_hf_api_rust_fn_method_hfrepositoryffi_get_raw_diff_stream(
-                    self.uniffiCloneHandle(),
-                    FfiConverterString.lower(compare)
+                        self.uniffiCloneHandle(),FfiConverterString.lower(compare)
                 )
             },
             pollFunc: ffi_hf_api_rust_rust_future_poll_rust_buffer,
@@ -2873,8 +2923,7 @@ open func infoDataset(revision: String?, expand: [String]?)async throws  -> Data
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_hf_api_rust_fn_method_hfrepositoryffi_info_dataset(
-                    self.uniffiCloneHandle(),
-                    FfiConverterOptionString.lower(revision),FfiConverterOptionSequenceString.lower(expand)
+                        self.uniffiCloneHandle(),FfiConverterOptionString.lower(revision),FfiConverterOptionSequenceString.lower(expand)
                 )
             },
             pollFunc: ffi_hf_api_rust_rust_future_poll_rust_buffer,
@@ -2897,8 +2946,7 @@ open func infoModel(revision: String?, expand: [String]?)async throws  -> ModelI
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_hf_api_rust_fn_method_hfrepositoryffi_info_model(
-                    self.uniffiCloneHandle(),
-                    FfiConverterOptionString.lower(revision),FfiConverterOptionSequenceString.lower(expand)
+                        self.uniffiCloneHandle(),FfiConverterOptionString.lower(revision),FfiConverterOptionSequenceString.lower(expand)
                 )
             },
             pollFunc: ffi_hf_api_rust_rust_future_poll_rust_buffer,
@@ -2911,8 +2959,9 @@ open func infoModel(revision: String?, expand: [String]?)async throws  -> ModelI
     
 open func kind() -> RepoTypeDto  {
     return try!  FfiConverterTypeRepoTypeDTO_lift(try! rustCall() {
+        uniffiCallStatus in
     uniffi_hf_api_rust_fn_method_hfrepositoryffi_kind(
-            self.uniffiCloneHandle(),$0
+            self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
 }
@@ -2927,8 +2976,7 @@ open func listCommits(revision: String?, limit: UInt64?)async throws  -> [GitCom
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_hf_api_rust_fn_method_hfrepositoryffi_list_commits(
-                    self.uniffiCloneHandle(),
-                    FfiConverterOptionString.lower(revision),FfiConverterOptionUInt64.lower(limit)
+                        self.uniffiCloneHandle(),FfiConverterOptionString.lower(revision),FfiConverterOptionUInt64.lower(limit)
                 )
             },
             pollFunc: ffi_hf_api_rust_rust_future_poll_rust_buffer,
@@ -2948,8 +2996,7 @@ open func listRefs(includePullRequests: Bool)async throws  -> GitRefsDto  {
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_hf_api_rust_fn_method_hfrepositoryffi_list_refs(
-                    self.uniffiCloneHandle(),
-                    FfiConverterBool.lower(includePullRequests)
+                        self.uniffiCloneHandle(),FfiConverterBool.lower(includePullRequests)
                 )
             },
             pollFunc: ffi_hf_api_rust_rust_future_poll_rust_buffer,
@@ -2972,8 +3019,7 @@ open func listTree(revision: String?, recursive: Bool, expand: Bool, limit: UInt
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_hf_api_rust_fn_method_hfrepositoryffi_list_tree(
-                    self.uniffiCloneHandle(),
-                    FfiConverterOptionString.lower(revision),FfiConverterBool.lower(recursive),FfiConverterBool.lower(expand),FfiConverterOptionUInt64.lower(limit)
+                        self.uniffiCloneHandle(),FfiConverterOptionString.lower(revision),FfiConverterBool.lower(recursive),FfiConverterBool.lower(expand),FfiConverterOptionUInt64.lower(limit)
                 )
             },
             pollFunc: ffi_hf_api_rust_rust_future_poll_rust_buffer,
@@ -2986,24 +3032,27 @@ open func listTree(revision: String?, recursive: Bool, expand: Bool, limit: UInt
     
 open func name() -> String  {
     return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
     uniffi_hf_api_rust_fn_method_hfrepositoryffi_name(
-            self.uniffiCloneHandle(),$0
+            self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
 }
     
 open func owner() -> String  {
     return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
     uniffi_hf_api_rust_fn_method_hfrepositoryffi_owner(
-            self.uniffiCloneHandle(),$0
+            self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
 }
     
 open func repoId() -> String  {
     return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
     uniffi_hf_api_rust_fn_method_hfrepositoryffi_repo_id(
-            self.uniffiCloneHandle(),$0
+            self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
 }
@@ -3018,8 +3067,7 @@ open func snapshotDownload(revision: String?, allowPatterns: [String]?, ignorePa
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_hf_api_rust_fn_method_hfrepositoryffi_snapshot_download(
-                    self.uniffiCloneHandle(),
-                    FfiConverterOptionString.lower(revision),FfiConverterOptionSequenceString.lower(allowPatterns),FfiConverterOptionSequenceString.lower(ignorePatterns),FfiConverterOptionString.lower(localDir),FfiConverterBool.lower(forceDownload),FfiConverterBool.lower(localFilesOnly),FfiConverterOptionUInt32.lower(maxWorkers),FfiConverterOptionTypeOperationHandle.lower(handle),FfiConverterOptionTypeFFIDownloadProgressHandler.lower(progress)
+                        self.uniffiCloneHandle(),FfiConverterOptionString.lower(revision),FfiConverterOptionSequenceString.lower(allowPatterns),FfiConverterOptionSequenceString.lower(ignorePatterns),FfiConverterOptionString.lower(localDir),FfiConverterBool.lower(forceDownload),FfiConverterBool.lower(localFilesOnly),FfiConverterOptionUInt32.lower(maxWorkers),FfiConverterOptionTypeOperationHandle.lower(handle),FfiConverterOptionTypeFFIDownloadProgressHandler.lower(progress)
                 )
             },
             pollFunc: ffi_hf_api_rust_rust_future_poll_rust_buffer,
@@ -3040,8 +3088,7 @@ open func updateSettings(`private`: Bool?, gated: GatedApprovalModeDto?, descrip
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_hf_api_rust_fn_method_hfrepositoryffi_update_settings(
-                    self.uniffiCloneHandle(),
-                    FfiConverterOptionBool.lower(`private`),FfiConverterOptionTypeGatedApprovalModeDTO.lower(gated),FfiConverterOptionString.lower(description),FfiConverterOptionBool.lower(discussionsDisabled),FfiConverterOptionTypeGatedNotificationsDTO.lower(gatedNotifications)
+                        self.uniffiCloneHandle(),FfiConverterOptionBool.lower(`private`),FfiConverterOptionTypeGatedApprovalModeDTO.lower(gated),FfiConverterOptionString.lower(description),FfiConverterOptionBool.lower(discussionsDisabled),FfiConverterOptionTypeGatedNotificationsDTO.lower(gatedNotifications)
                 )
             },
             pollFunc: ffi_hf_api_rust_rust_future_poll_void,
@@ -3063,8 +3110,7 @@ open func uploadFile(source: UploadSourceDto, pathInRepo: String, revision: Stri
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_hf_api_rust_fn_method_hfrepositoryffi_upload_file(
-                    self.uniffiCloneHandle(),
-                    FfiConverterTypeUploadSourceDTO_lower(source),FfiConverterString.lower(pathInRepo),FfiConverterOptionString.lower(revision),FfiConverterOptionString.lower(commitMessage),FfiConverterOptionString.lower(commitDescription),FfiConverterBool.lower(createPr),FfiConverterOptionString.lower(parentCommit),FfiConverterOptionTypeOperationHandle.lower(handle),FfiConverterOptionTypeFFIUploadProgressHandler.lower(progress)
+                        self.uniffiCloneHandle(),FfiConverterTypeUploadSourceDTO_lower(source),FfiConverterString.lower(pathInRepo),FfiConverterOptionString.lower(revision),FfiConverterOptionString.lower(commitMessage),FfiConverterOptionString.lower(commitDescription),FfiConverterBool.lower(createPr),FfiConverterOptionString.lower(parentCommit),FfiConverterOptionTypeOperationHandle.lower(handle),FfiConverterOptionTypeFFIUploadProgressHandler.lower(progress)
                 )
             },
             pollFunc: ffi_hf_api_rust_rust_future_poll_rust_buffer,
@@ -3087,8 +3133,7 @@ open func uploadFolder(folderPath: String, pathInRepo: String?, revision: String
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_hf_api_rust_fn_method_hfrepositoryffi_upload_folder(
-                    self.uniffiCloneHandle(),
-                    FfiConverterString.lower(folderPath),FfiConverterOptionString.lower(pathInRepo),FfiConverterOptionString.lower(revision),FfiConverterOptionString.lower(commitMessage),FfiConverterOptionString.lower(commitDescription),FfiConverterBool.lower(createPr),FfiConverterOptionSequenceString.lower(allowPatterns),FfiConverterOptionSequenceString.lower(ignorePatterns),FfiConverterOptionSequenceString.lower(deletePatterns),FfiConverterOptionTypeOperationHandle.lower(handle),FfiConverterOptionTypeFFIUploadProgressHandler.lower(progress)
+                        self.uniffiCloneHandle(),FfiConverterString.lower(folderPath),FfiConverterOptionString.lower(pathInRepo),FfiConverterOptionString.lower(revision),FfiConverterOptionString.lower(commitMessage),FfiConverterOptionString.lower(commitDescription),FfiConverterBool.lower(createPr),FfiConverterOptionSequenceString.lower(allowPatterns),FfiConverterOptionSequenceString.lower(ignorePatterns),FfiConverterOptionSequenceString.lower(deletePatterns),FfiConverterOptionTypeOperationHandle.lower(handle),FfiConverterOptionTypeFFIUploadProgressHandler.lower(progress)
                 )
             },
             pollFunc: ffi_hf_api_rust_rust_future_poll_rust_buffer,
@@ -3250,16 +3295,18 @@ open class ModelInfoListingFfi: ModelInfoListingFfiProtocol, @unchecked Sendable
      * multiple consumers and at any point during iteration.
      */
 open func cancel()  {try! rustCall() {
+        uniffiCallStatus in
     uniffi_hf_api_rust_fn_method_modelinfolistingffi_cancel(
-            self.uniffiCloneHandle(),$0
+            self.uniffiCloneHandle(),uniffiCallStatus
     )
 }
 }
     
 open func isCancelled() -> Bool  {
     return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
     uniffi_hf_api_rust_fn_method_modelinfolistingffi_is_cancelled(
-            self.uniffiCloneHandle(),$0
+            self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
 }
@@ -3273,8 +3320,7 @@ open func next()async throws  -> ModelInfoDto?  {
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_hf_api_rust_fn_method_modelinfolistingffi_next(
-                    self.uniffiCloneHandle()
-                    
+                        self.uniffiCloneHandle()
                 )
             },
             pollFunc: ffi_hf_api_rust_rust_future_poll_rust_buffer,
@@ -3392,7 +3438,8 @@ open class OperationHandle: OperationHandleProtocol, @unchecked Sendable {
 public convenience init() {
     let handle =
         try! rustCall() {
-    uniffi_hf_api_rust_fn_constructor_operationhandle_new($0
+        uniffiCallStatus in
+    uniffi_hf_api_rust_fn_constructor_operationhandle_new(uniffiCallStatus
     )
 }
     self.init(unsafeFromHandle: handle)
@@ -3414,8 +3461,9 @@ public convenience init() {
      * Cancels the in-flight operation. Idempotent.
      */
 open func cancel()  {try! rustCall() {
+        uniffiCallStatus in
     uniffi_hf_api_rust_fn_method_operationhandle_cancel(
-            self.uniffiCloneHandle(),$0
+            self.uniffiCloneHandle(),uniffiCallStatus
     )
 }
 }
@@ -3427,8 +3475,9 @@ open func cancel()  {try! rustCall() {
      */
 open func isCancelled() -> Bool  {
     return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
     uniffi_hf_api_rust_fn_method_operationhandle_is_cancelled(
-            self.uniffiCloneHandle(),$0
+            self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
 }
@@ -8902,9 +8951,10 @@ public func uniffiForeignFutureHandleCountHfApiRust() -> Int {
  */
 public func computeDeleteCacheStrategy(cacheInfo: HfCacheInfoDto, commitHashes: [String]) -> DeleteCacheStrategyDto  {
     return try!  FfiConverterTypeDeleteCacheStrategyDTO_lift(try! rustCall() {
+        uniffiCallStatus in
     uniffi_hf_api_rust_fn_func_compute_delete_cache_strategy(
         FfiConverterTypeHFCacheInfoDTO_lower(cacheInfo),
-        FfiConverterSequenceString.lower(commitHashes),$0
+        FfiConverterSequenceString.lower(commitHashes),uniffiCallStatus
     )
 })
 }
@@ -8917,8 +8967,9 @@ public func computeDeleteCacheStrategy(cacheInfo: HfCacheInfoDto, commitHashes: 
  */
 public func executeDeleteCacheStrategy(strategy: DeleteCacheStrategyDto)throws  -> ExecuteResultDto  {
     return try  FfiConverterTypeExecuteResultDTO_lift(try rustCallWithError(FfiConverterTypeCacheDeletionErrorFFI_lift) {
+        uniffiCallStatus in
     uniffi_hf_api_rust_fn_func_execute_delete_cache_strategy(
-        FfiConverterTypeDeleteCacheStrategyDTO_lower(strategy),$0
+        FfiConverterTypeDeleteCacheStrategyDTO_lower(strategy),uniffiCallStatus
     )
 })
 }
@@ -8928,9 +8979,10 @@ public func executeDeleteCacheStrategy(strategy: DeleteCacheStrategyDto)throws  
  * otherwise the typed error.
  */
 public func validateRepoIdSegmentFfi(segment: String, role: SegmentRoleDto)throws   {try rustCallWithError(FfiConverterTypeRepoIdValidationErrorFFI_lift) {
+        uniffiCallStatus in
     uniffi_hf_api_rust_fn_func_validate_repo_id_segment_ffi(
         FfiConverterString.lower(segment),
-        FfiConverterTypeSegmentRoleDTO_lower(role),$0
+        FfiConverterTypeSegmentRoleDTO_lower(role),uniffiCallStatus
     )
 }
 }
@@ -8950,190 +9002,190 @@ private let initializationResult: InitializationResult = {
     if bindings_contract_version != scaffolding_contract_version {
         return InitializationResult.contractVersionMismatch
     }
-    if (uniffi_hf_api_rust_checksum_func_compute_delete_cache_strategy() != 24805) {
+    if (uniffi_hf_api_rust_checksum_func_compute_delete_cache_strategy() != 52355) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_func_execute_delete_cache_strategy() != 12661) {
+    if (uniffi_hf_api_rust_checksum_func_execute_delete_cache_strategy() != 51897) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_func_validate_repo_id_segment_ffi() != 63123) {
+    if (uniffi_hf_api_rust_checksum_func_validate_repo_id_segment_ffi() != 64429) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_ffitokenprovider_get_token() != 41517) {
+    if (uniffi_hf_api_rust_checksum_method_ffitokenprovider_get_token() != 17334) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_operationhandle_cancel() != 29904) {
+    if (uniffi_hf_api_rust_checksum_method_operationhandle_cancel() != 64035) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_operationhandle_is_cancelled() != 54574) {
+    if (uniffi_hf_api_rust_checksum_method_operationhandle_is_cancelled() != 42036) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_datasetinfolistingffi_cancel() != 35069) {
+    if (uniffi_hf_api_rust_checksum_method_datasetinfolistingffi_cancel() != 20541) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_datasetinfolistingffi_is_cancelled() != 17069) {
+    if (uniffi_hf_api_rust_checksum_method_datasetinfolistingffi_is_cancelled() != 9265) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_datasetinfolistingffi_next() != 3269) {
+    if (uniffi_hf_api_rust_checksum_method_datasetinfolistingffi_next() != 55248) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfclientffi_cache_dir() != 30517) {
+    if (uniffi_hf_api_rust_checksum_method_hfclientffi_cache_dir() != 21486) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfclientffi_cache_enabled() != 58826) {
+    if (uniffi_hf_api_rust_checksum_method_hfclientffi_cache_enabled() != 51188) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfclientffi_create_repository() != 4894) {
+    if (uniffi_hf_api_rust_checksum_method_hfclientffi_create_repository() != 16142) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfclientffi_dataset() != 53142) {
+    if (uniffi_hf_api_rust_checksum_method_hfclientffi_dataset() != 1355) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfclientffi_delete_repository() != 49350) {
+    if (uniffi_hf_api_rust_checksum_method_hfclientffi_delete_repository() != 45040) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfclientffi_endpoint() != 14843) {
+    if (uniffi_hf_api_rust_checksum_method_hfclientffi_endpoint() != 64059) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfclientffi_list_datasets() != 27835) {
+    if (uniffi_hf_api_rust_checksum_method_hfclientffi_list_datasets() != 8248) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfclientffi_list_datasets_stream() != 41953) {
+    if (uniffi_hf_api_rust_checksum_method_hfclientffi_list_datasets_stream() != 50251) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfclientffi_list_models() != 16625) {
+    if (uniffi_hf_api_rust_checksum_method_hfclientffi_list_models() != 65341) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfclientffi_list_models_stream() != 23623) {
+    if (uniffi_hf_api_rust_checksum_method_hfclientffi_list_models_stream() != 17287) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfclientffi_model() != 39767) {
+    if (uniffi_hf_api_rust_checksum_method_hfclientffi_model() != 15875) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfclientffi_move_repository() != 61243) {
+    if (uniffi_hf_api_rust_checksum_method_hfclientffi_move_repository() != 43588) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfclientffi_scan_cache() != 14510) {
+    if (uniffi_hf_api_rust_checksum_method_hfclientffi_scan_cache() != 14817) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfclientffi_whoami() != 32113) {
+    if (uniffi_hf_api_rust_checksum_method_hfclientffi_whoami() != 28573) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_modelinfolistingffi_cancel() != 49824) {
+    if (uniffi_hf_api_rust_checksum_method_modelinfolistingffi_cancel() != 55423) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_modelinfolistingffi_is_cancelled() != 52483) {
+    if (uniffi_hf_api_rust_checksum_method_modelinfolistingffi_is_cancelled() != 44981) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_modelinfolistingffi_next() != 56593) {
+    if (uniffi_hf_api_rust_checksum_method_modelinfolistingffi_next() != 8480) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_ffiglobmatcher_is_match() != 36063) {
+    if (uniffi_hf_api_rust_checksum_method_ffiglobmatcher_is_match() != 59938) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_ffibytechunkhandler_on_chunk() != 48383) {
+    if (uniffi_hf_api_rust_checksum_method_ffibytechunkhandler_on_chunk() != 29739) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_ffidownloadprogresshandler_on_event() != 20685) {
+    if (uniffi_hf_api_rust_checksum_method_ffidownloadprogresshandler_on_event() != 30797) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_ffiuploadprogresshandler_on_event() != 27487) {
+    if (uniffi_hf_api_rust_checksum_method_ffiuploadprogresshandler_on_event() != 43726) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_create_branch() != 27799) {
+    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_create_branch() != 35444) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_create_commit() != 39317) {
+    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_create_commit() != 45921) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_create_tag() != 44655) {
+    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_create_tag() != 56981) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_delete_branch() != 27034) {
+    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_delete_branch() != 34820) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_delete_file() != 24675) {
+    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_delete_file() != 14862) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_delete_folder() != 37797) {
+    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_delete_folder() != 36467) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_delete_tag() != 52587) {
+    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_delete_tag() != 25200) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_download_file_stream() != 37754) {
+    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_download_file_stream() != 33794) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_download_file_to_cache() != 27790) {
+    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_download_file_to_cache() != 53306) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_exists() != 26504) {
+    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_exists() != 41604) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_get_commit_diff() != 24092) {
+    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_get_commit_diff() != 16368) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_get_file_metadata() != 24000) {
+    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_get_file_metadata() != 57428) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_get_paths_info() != 12258) {
+    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_get_paths_info() != 25683) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_get_raw_diff() != 13430) {
+    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_get_raw_diff() != 53802) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_get_raw_diff_stream() != 39517) {
+    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_get_raw_diff_stream() != 35717) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_info_dataset() != 37043) {
+    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_info_dataset() != 14043) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_info_model() != 45655) {
+    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_info_model() != 39145) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_kind() != 58549) {
+    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_kind() != 51179) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_list_commits() != 32809) {
+    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_list_commits() != 58546) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_list_refs() != 7383) {
+    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_list_refs() != 5763) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_list_tree() != 44368) {
+    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_list_tree() != 44872) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_name() != 1273) {
+    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_name() != 28614) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_owner() != 55435) {
+    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_owner() != 45100) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_repo_id() != 27739) {
+    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_repo_id() != 58139) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_snapshot_download() != 15393) {
+    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_snapshot_download() != 19749) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_update_settings() != 28281) {
+    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_update_settings() != 14395) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_upload_file() != 62414) {
+    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_upload_file() != 62041) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_upload_folder() != 47540) {
+    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_upload_folder() != 35696) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_constructor_operationhandle_new() != 44772) {
+    if (uniffi_hf_api_rust_checksum_constructor_operationhandle_new() != 11419) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_constructor_hfclientffi_new() != 14880) {
+    if (uniffi_hf_api_rust_checksum_constructor_hfclientffi_new() != 21324) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_constructor_hfclientffi_with_token_provider() != 3602) {
+    if (uniffi_hf_api_rust_checksum_constructor_hfclientffi_with_token_provider() != 48099) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_constructor_ffiglobmatcher_try_new() != 50095) {
+    if (uniffi_hf_api_rust_checksum_constructor_ffiglobmatcher_try_new() != 49344) {
         return InitializationResult.apiChecksumMismatch
     }
 
