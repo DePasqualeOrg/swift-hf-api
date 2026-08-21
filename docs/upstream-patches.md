@@ -592,21 +592,22 @@ The fork lives at `https://github.com/DePasqualeOrg/xet-core` (origin) with `htt
 
 ## Active patches on `uniffi-rs`
 
-These are wired through `rust/Cargo.toml`'s `[patch.crates-io]` block. See the comment block in that file for context. The fork branch's commit SHA is pinned at `e3e998025`, which includes the BOM-strip fix and the Swift FFI visibility options used by `rust/uniffi.toml`. When the needed Swift bindgen fixes land upstream, we drop the patch and bump the upstream `uniffi` dep.
+These are wired through `rust/Cargo.toml`'s `[patch.crates-io]` block, which pins the tip of the fork's patch branch. See the comment block in that file for context. The branch carries the Swift FFI visibility options used by `rust/uniffi.toml`. When those options land in a uniffi-rs release, we drop the patch block and use the plain `uniffi` dep.
 
 ## Refresh protocol
 
-When an upstream PR for one of our patches merges:
+Two things trigger a sync: an upstream PR for one of our patches merging, or the fork simply drifting far enough behind that we want upstream's other fixes. The steps are the same; only step 2 differs.
 
-1. Fetch upstream into the fork: `cd /Users/anthony/files/projects/forked/hf-hub && git fetch upstream main`
-2. Rebase the patches branch and drop the merged commit:
-   `git rebase --onto upstream/main <merged-commit>^ <patches-branch>`
-3. Push the rebased branch: `git push origin <patches-branch> --force-with-lease`
-4. Update `swift-hf-api/rust/Cargo.toml` to the new tip SHA.
-5. Run `./scripts/rust/regenerate-wrapper.sh && ./scripts/rust/build/build-rust-apple-slices.sh && ./scripts/rust/build/assemble-artifactbundle.sh 0.0.0-dev` and `swift test` (rust-on + rust-off) to confirm nothing regresses.
-6. Update this doc: move the merged entry to a "Historical" section with the merge SHA / version it shipped in.
-
-Force-push to a fork branch is acceptable here – the branch is owned by this project and no one else consumes it.
+1. **Fetch upstream:** `cd ~/files/projects/forked/<fork> && git fetch upstream`
+2. **Check what is already upstream before rebasing.** Start with `git cherry -v upstream/main <patches-branch>` — a `-` means upstream has a patch-identical commit. **Do not stop there.** `git cherry` compares patch ids, so it misses a patch upstream re-implemented, reworded, or landed alongside an unrelated change such as a version bump. Every conflict during the rebase deserves the question "does upstream's side already do this?" before it is merged by hand.
+3. **Back up first:** `git branch backup/pre-rebase-$(date +%Y%m%d) HEAD`. A rebase across a large upstream gap is not a one-shot operation.
+4. **Rebase.** To drop a specific merged commit: `git rebase --onto upstream/main <merged-commit> <patches-branch>` (no `^` — the caret replays the merged commit and relies on git noticing it is already applied). Otherwise a plain `git rebase upstream/main` and `git rebase --skip` for each commit found to be superseded.
+5. **Resolve conflicts toward upstream's structure, not ours.** Most conflicts in these forks come from upstream refactors — added `#[cfg(not(target_family = "wasm"))]` gating, moved helpers, changed signatures. The right resolution is almost always to keep upstream's shape and re-apply our behavior inside it, not to keep our block wholesale.
+6. **Push:** `git push origin <patches-branch> --force-with-lease`. Force-push is fine here; the branches are owned by this project and nothing else consumes them.
+7. **Update the pins** in `swift-hf-api/rust/Cargo.toml` — and `swift-tokenizers/rust/Cargo.toml` when the uniffi revision changed. **The uniffi revision must be identical in both packages**, or the two artifactbundles are built against different bindgen behavior.
+8. **Expect consumer changes.** Dropping a patch can remove an API this crate calls, and upstream's own changes can alter signatures. Let `cargo check` drive this; the errors are precise.
+9. **Verify:** `cargo fmt --check`, `cargo clippy --all-targets`, `cargo test`, then `./scripts/rust/regenerate-wrapper.sh && ./scripts/rust/build/build-rust-apple-slices.sh && ./scripts/rust/build/assemble-artifactbundle.sh 0.0.0-dev`, then `swift test` against the bundle just built: `HFAPI_RUST_LOCAL_ARTIFACTBUNDLE_PATH=rust/target/artifactbundle/HFAPIRust.artifactbundle swift test`. The override must be relative to the package root — SwiftPM rejects an absolute path for a local binary target. Run the same chain in `swift-tokenizers` whenever the uniffi revision moved, substituting `TOKENIZERS_RUST_LOCAL_ARTIFACTBUNDLE_PATH` and `TokenizersRust.artifactbundle`. Regenerating the wrapper matters whenever uniffi moves — the generated Swift changes with it.
+10. **Update this doc:** delete the entry for each dropped patch, and correct the patch lists in `swift-hf-api/rust/Cargo.toml` (and `swift-tokenizers/rust/Cargo.toml` when uniffi changed) so they describe what the branches actually carry.
 
 ## When to add a new patch
 
@@ -756,5 +757,5 @@ The pointer is allocated once at module load and Rust owns its lifetime, so the 
 /Users/anthony/files/projects/forked/swift-hf-api/rust/Cargo.toml
   hf-hub = { git = "https://github.com/DePasqualeOrg/hf-hub", rev = "<tip-of-patches-branch>", features = [...] }
   [patch.crates-io]
-  uniffi* = { git = "https://github.com/DePasqualeOrg/uniffi-rs.git", rev = "e3e998025..." }
+  uniffi* = { git = "https://github.com/DePasqualeOrg/uniffi-rs.git", rev = "<tip-of-uniffi-patches-branch>" }
 ```

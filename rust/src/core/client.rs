@@ -102,17 +102,16 @@ pub struct HFClientFFI {
 
 impl HFClientFFI {
     /// Build an `hf_hub::HFClient` from `options`, optionally setting a
-    /// static `token`. Always sets `disable_implicit_token(true)` so the
-    /// underlying crate never falls back to its narrower `HF_TOKEN`/
-    /// `HF_TOKEN_PATH`/`$HF_HOME/token` chain: the Swift layer either
-    /// resolved a token already (via `Auth.env`'s six-source chain) and
-    /// passed it through `token`, or explicitly chose `Auth.unauthenticated`,
-    /// or wired a dynamic provider that is the sole source of truth.
+    /// static `token`. hf-hub no longer resolves tokens from the environment
+    /// itself (upstream removed that in #193), so the Swift layer is the sole
+    /// source: it either resolved a token via `Auth.env`'s six-source chain and
+    /// passed it through `token`, explicitly chose `Auth.unauthenticated`, or
+    /// wired a dynamic provider.
     fn build_client_with_token(
         options: &HFClientOptionsDTO,
         token: Option<String>,
     ) -> FFIResult<HFClient> {
-        let mut builder = HFClientBuilder::new().disable_implicit_token(true);
+        let mut builder = HFClientBuilder::new();
         if let Some(endpoint) = &options.endpoint {
             builder = builder.endpoint(endpoint.clone());
         }
@@ -517,7 +516,7 @@ impl HFClientFFI {
             RepoTypeDTO::Model => {
                 client
                     .create_repository()
-                    .repo_id(repo_id)
+                    .repo_id(&repo_id)
                     .repo_type(RepoTypeModel)
                     .maybe_private(private)
                     .exist_ok(exist_ok)
@@ -528,7 +527,7 @@ impl HFClientFFI {
             RepoTypeDTO::Dataset => {
                 client
                     .create_repository()
-                    .repo_id(repo_id)
+                    .repo_id(&repo_id)
                     .repo_type(RepoTypeDataset)
                     .maybe_private(private)
                     .exist_ok(exist_ok)
@@ -554,7 +553,7 @@ impl HFClientFFI {
             RepoTypeDTO::Model => {
                 client
                     .delete_repository()
-                    .repo_id(repo_id)
+                    .repo_id(&repo_id)
                     .repo_type(RepoTypeModel)
                     .missing_ok(missing_ok)
                     .send()
@@ -563,7 +562,7 @@ impl HFClientFFI {
             RepoTypeDTO::Dataset => {
                 client
                     .delete_repository()
-                    .repo_id(repo_id)
+                    .repo_id(&repo_id)
                     .repo_type(RepoTypeDataset)
                     .missing_ok(missing_ok)
                     .send()
@@ -586,8 +585,8 @@ impl HFClientFFI {
             RepoTypeDTO::Model => {
                 client
                     .move_repository()
-                    .from_id(from_id)
-                    .to_id(to_id)
+                    .from_id(&from_id)
+                    .to_id(&to_id)
                     .repo_type(RepoTypeModel)
                     .send()
                     .await
@@ -595,8 +594,8 @@ impl HFClientFFI {
             RepoTypeDTO::Dataset => {
                 client
                     .move_repository()
-                    .from_id(from_id)
-                    .to_id(to_id)
+                    .from_id(&from_id)
+                    .to_id(&to_id)
                     .repo_type(RepoTypeDataset)
                     .send()
                     .await

@@ -146,7 +146,7 @@ let package = Package(
             // Swift 6's strict-concurrency mode flags `UnsafePointer` as
             // non-`Sendable` global state. The pointer is allocated once
             // and Rust owns its lifetime, so the memory model is sound;
-            // UniFFI 0.31's `uniffi.toml` exposes no setting that toggles
+            // UniFFI 0.32's `uniffi.toml` exposes no setting that toggles
             // the concurrency annotation, so we drop strict concurrency on
             // the generated module only. Consumers never see this code
             // (HFAPIFFI is not in `products`).
