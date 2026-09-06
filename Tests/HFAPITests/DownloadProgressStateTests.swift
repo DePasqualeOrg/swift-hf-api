@@ -6,6 +6,33 @@ import Testing
 
 @Suite("DownloadProgressState")
 struct DownloadProgressStateTests {
+    @Test("Resumed logical bytes combine with completed files without double counting")
+    func resumedSnapshotProgress() {
+        var state = DownloadProgressState()
+        state.observe(.start(totalFiles: 2, totalBytes: 1000))
+        state.observe(
+            .progress(files: [
+                FileProgress(filename: "config.json", bytesCompleted: 100, totalBytes: 100, status: .complete),
+                FileProgress(filename: "model.gguf", bytesCompleted: 600, totalBytes: 900, status: .started),
+            ])
+        )
+        #expect(state.fractionCompleted == 0.7)
+        state.observe(
+            .progress(files: [
+                FileProgress(filename: "model.gguf", bytesCompleted: 750, totalBytes: 900, status: .inProgress)
+            ])
+        )
+        #expect(state.fractionCompleted == 0.85)
+        state.observe(
+            .progress(files: [
+                FileProgress(filename: "model.gguf", bytesCompleted: 900, totalBytes: 900, status: .complete)
+            ])
+        )
+        #expect(state.fractionCompleted! < 1)
+        state.observe(.complete)
+        #expect(state.fractionCompleted == 1)
+    }
+
     @Test("fractionCompleted is nil before Start")
     func nilBeforeStart() {
         let state = DownloadProgressState()

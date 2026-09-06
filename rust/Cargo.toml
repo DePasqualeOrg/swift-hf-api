@@ -51,7 +51,7 @@ tracing = "0.1"
 uniffi = { version = "0.32", default-features = false, features = ["tokio"] }
 
 # hf-hub is forked at DePasqualeOrg/hf-hub on `swift-hf-api-patches`. The
-# branch carries nine PR-shaped commits not yet upstream:
+# branch carries the following patches not yet upstream:
 #   1. Expose native-tls/rustls-tls passthrough features
 #   2. Resume cached file downloads from .incomplete
 #   3. Collapse snapshot Start cascade to a single event per operation
@@ -61,16 +61,17 @@ uniffi = { version = "0.32", default-features = false, features = ["tokio"] }
 #   7. Add delete_revisions and DeleteCacheStrategy
 #   8. Co-locate the Xet cache with an explicit hub cache_dir
 #   9. Document upstream sync workflow
+#  10. Resume cached Xet downloads and report retained bytes
 # Per-platform TLS: native-tls on Apple (Security.framework, no rustls
 # bundle), rustls-tls on Linux (no system OpenSSL ABI dependency). The
 # feature passthrough only works once both forks are wired in – see the
 # [patch.crates-io] block below for the corresponding xet-core patch.
 # See docs/upstream-patches.md for the full policy and refresh protocol.
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
-hf-hub = { git = "https://github.com/DePasqualeOrg/hf-hub", rev = "cecf06800d89343a23bfbd6d6be649972157a0cc", default-features = false, features = ["native-tls"] }
+hf-hub = { git = "https://github.com/DePasqualeOrg/hf-hub", rev = "12e80c6a33a85bb26869df564e5bf08e9c4ce156", default-features = false, features = ["native-tls"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-hf-hub = { git = "https://github.com/DePasqualeOrg/hf-hub", rev = "cecf06800d89343a23bfbd6d6be649972157a0cc", default-features = false, features = ["rustls-tls"] }
+hf-hub = { git = "https://github.com/DePasqualeOrg/hf-hub", rev = "12e80c6a33a85bb26869df564e5bf08e9c4ce156", default-features = false, features = ["rustls-tls"] }
 
 [features]
 # Enables the `uniffi-bindgen-swift` binary entry point. Activates `cargo-metadata`
@@ -115,8 +116,8 @@ uniffi_meta = { git = "https://github.com/DePasqualeOrg/uniffi-rs.git", rev = "4
 uniffi_pipeline = { git = "https://github.com/DePasqualeOrg/uniffi-rs.git", rev = "4c3b6c69c17e90edd54111ad2b0e19ce4a5f9280" }
 uniffi_udl = { git = "https://github.com/DePasqualeOrg/uniffi-rs.git", rev = "4c3b6c69c17e90edd54111ad2b0e19ce4a5f9280" }
 uniffi_internal_macros = { git = "https://github.com/DePasqualeOrg/uniffi-rs.git", rev = "4c3b6c69c17e90edd54111ad2b0e19ce4a5f9280" }
-hf-xet = { git = "https://github.com/DePasqualeOrg/xet-core", rev = "73faf1a632e77ee0c201f0bb04419e58d9dad8e7" }
-xet-client = { git = "https://github.com/DePasqualeOrg/xet-core", rev = "73faf1a632e77ee0c201f0bb04419e58d9dad8e7" }
-xet-runtime = { git = "https://github.com/DePasqualeOrg/xet-core", rev = "73faf1a632e77ee0c201f0bb04419e58d9dad8e7" }
-xet-data = { git = "https://github.com/DePasqualeOrg/xet-core", rev = "73faf1a632e77ee0c201f0bb04419e58d9dad8e7" }
-xet-core-structures = { git = "https://github.com/DePasqualeOrg/xet-core", rev = "73faf1a632e77ee0c201f0bb04419e58d9dad8e7" }
+hf-xet = { git = "https://github.com/DePasqualeOrg/xet-core", rev = "021f30230185f7949598880aec91cc7d9c36073d" }
+xet-client = { git = "https://github.com/DePasqualeOrg/xet-core", rev = "021f30230185f7949598880aec91cc7d9c36073d" }
+xet-runtime = { git = "https://github.com/DePasqualeOrg/xet-core", rev = "021f30230185f7949598880aec91cc7d9c36073d" }
+xet-data = { git = "https://github.com/DePasqualeOrg/xet-core", rev = "021f30230185f7949598880aec91cc7d9c36073d" }
+xet-core-structures = { git = "https://github.com/DePasqualeOrg/xet-core", rev = "021f30230185f7949598880aec91cc7d9c36073d" }

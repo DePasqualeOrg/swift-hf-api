@@ -70,6 +70,8 @@ hfapiFFILinkerSettings.append(
         .linkedFramework($0, .when(platforms: [.macOS, .iOS]))
     }
 )
+// sysinfo uses OpenDirectory for its macOS user queries.
+hfapiFFILinkerSettings.append(.linkedFramework("OpenDirectory", .when(platforms: [.macOS])))
 hfapiFFILinkerSettings.append(
     contentsOf: appleLibraries.map {
         .linkedLibrary($0, .when(platforms: [.macOS, .iOS]))

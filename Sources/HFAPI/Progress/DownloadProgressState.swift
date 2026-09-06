@@ -10,12 +10,10 @@ import Foundation
 /// ``RepositoryProtocol/snapshotDownload(revision:allowPatterns:ignorePatterns:localDir:forceDownload:networkAccess:maxWorkers:progress:)`` (or any other API that
 /// emits ``DownloadEvent``); read ``fractionCompleted`` for display.
 ///
-/// Progress blends whole-file events with Xet transfer bytes. Xet per-file
-/// counters move at materialization boundaries, so active Xet progress uses
-/// ``DownloadEvent/aggregateProgress(bytesCompleted:totalBytes:bytesPerSec:transferBytesCompleted:transferBytes:transferBytesPerSec:)``'s transfer-byte channel. Cached
-/// whole files count when emitted as complete; Xet dedup/cache bytes are not
-/// credited upfront. The fraction reaches 100% only after
-/// ``DownloadEvent/complete``.
+/// Cached downloads report retained and newly written logical bytes through
+/// per-file events. Direct-directory Xet downloads use aggregate transfer
+/// progress between materialization boundaries. The fraction reaches 100%
+/// only after ``DownloadEvent/complete``.
 public struct DownloadProgressState: Sendable, Equatable {
     /// Number of files in the operation, as reported by
     /// ``DownloadEvent/start(totalFiles:totalBytes:)``.

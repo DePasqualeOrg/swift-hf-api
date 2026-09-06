@@ -165,7 +165,7 @@ smoke_test_link() {
     clang -target "${arch}-apple-macos${MACOSX_DEPLOYMENT_TARGET}" \
       smoke.c "${archive}" -o smoke.bin \
       -framework SystemConfiguration -framework CoreFoundation \
-      -framework Security -framework IOKit -lobjc -liconv
+      -framework Security -framework IOKit -framework OpenDirectory -lobjc -liconv
   )
   rm -rf "${workdir}"
 }
