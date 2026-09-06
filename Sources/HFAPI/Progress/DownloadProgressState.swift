@@ -10,8 +10,9 @@ import Foundation
 /// ``RepositoryProtocol/snapshotDownload(revision:allowPatterns:ignorePatterns:localDir:forceDownload:networkAccess:maxWorkers:progress:)`` (or any other API that
 /// emits ``DownloadEvent``); read ``fractionCompleted`` for display.
 ///
-/// Cached downloads report retained and newly written logical bytes through
-/// per-file events. Direct-directory Xet downloads use aggregate transfer
+/// Cached downloads report retained bytes plus estimated logical transfer progress
+/// through per-file events. The estimate is for display, not a resume offset.
+/// Direct-directory Xet downloads use aggregate transfer
 /// progress between materialization boundaries. The fraction reaches 100%
 /// only after ``DownloadEvent/complete``.
 public struct DownloadProgressState: Sendable, Equatable {
