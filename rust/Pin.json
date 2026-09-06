@@ -1,9 +1,9 @@
 {
   "hash_schema_version": 3,
-  "version": "0.4.4",
-  "git_commit": "83813fbb59f34625c85fd4a7908e41c92e942b1f",
+  "version": "0.4.5",
+  "git_commit": "a5ef806bc39bf2aa984f596b2422b4fc2e457957",
   "rust_toolchain": "1.97.0",
-  "source_hash_sha256": "fc634795a5d9640653e056f1787a7ac14bdcd87c4e32e5c05fda7379f4b34e1e",
-  "artifactbundle_url": "https://github.com/DePasqualeOrg/swift-hf-api/releases/download/hfapi-rust-0.4.4/HFAPIRust-0.4.4.artifactbundle.zip",
-  "checksum": "343bb9807752e900f466465078dd9ded2c8df20ef6e29abee063ac65a0eaca83"
+  "source_hash_sha256": "090e0a4fd6d5bf8cdb40ec42fad6808d2f4e636103e8e31ea9a4537168ee2d93",
+  "artifactbundle_url": "https://github.com/DePasqualeOrg/swift-hf-api/releases/download/hfapi-rust-0.4.5/HFAPIRust-0.4.5.artifactbundle.zip",
+  "checksum": "32f9bfb1279938b09dd403fc89e9f533b67a040e7fda6264f64002db14035ce8"
 }
