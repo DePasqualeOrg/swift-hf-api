@@ -93,6 +93,18 @@ if docsEnabled {
     )
 }
 
+// The generated wrapper imports the `HFAPIRust` C module `@_implementationOnly`. Without library
+// evolution that is only sound while no C type contributes to the layout of a type clients can
+// see; `CheckImplementationOnly` makes the compiler enforce it. Swift 6.4 introduced the check and
+// deprecated the unchecked form.
+var hfapiFFISwiftSettings: [SwiftSetting] = [
+    // See the language-mode note on the `HFAPIFFI` target.
+    .swiftLanguageMode(.v5)
+]
+#if compiler(>=6.4)
+    hfapiFFISwiftSettings.append(.enableExperimentalFeature("CheckImplementationOnly"))
+#endif
+
 let package = Package(
     name: "swift-hf-api",
     platforms: [
@@ -158,9 +170,7 @@ let package = Package(
             // gives us a `uniffi.toml` flag for it). Track upstream Swift 6
             // support – the swift-tokenizers fork would benefit equally,
             // so a shared bindgen-template fix is the natural follow-up.
-            swiftSettings: [
-                .swiftLanguageMode(.v5)
-            ],
+            swiftSettings: hfapiFFISwiftSettings,
             linkerSettings: hfapiFFILinkerSettings
         ),
         .testTarget(

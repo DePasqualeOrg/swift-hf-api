@@ -234,7 +234,11 @@ extension FfiConverterPrimitive {
 
 // Types conforming to `FfiConverterRustBuffer` lift and lower into a `RustBuffer`.
 // Used for complex types where it's hard to write a custom lift/lower.
-fileprivate protocol FfiConverterRustBuffer: FfiConverter where FfiType == RustBuffer {}
+//
+// Conformers declare `typealias FfiType = RustBuffer` rather than inheriting a
+// `where FfiType == RustBuffer` constraint from the protocol: a requirement signature that names
+// `RustBuffer` is rejected when the FFI module is imported `@_implementationOnly`.
+fileprivate protocol FfiConverterRustBuffer: FfiConverter {}
 
 extension FfiConverterRustBuffer {
 #if swift(>=5.8)
@@ -607,6 +611,7 @@ fileprivate struct FfiConverterString: FfiConverter {
 @_documentation(visibility: private)
 #endif
 fileprivate struct FfiConverterData: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
     typealias SwiftType = Data
 
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Data {
@@ -3556,6 +3561,8 @@ extension BlobLfsInfoDto: Sendable {}
 @_documentation(visibility: private)
 #endif
 struct FfiConverterTypeBlobLfsInfoDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
+
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> BlobLfsInfoDto {
         return
             try BlobLfsInfoDto(
@@ -3619,6 +3626,8 @@ extension BlobSecurityInfoDto: Sendable {}
 @_documentation(visibility: private)
 #endif
 struct FfiConverterTypeBlobSecurityInfoDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
+
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> BlobSecurityInfoDto {
         return
             try BlobSecurityInfoDto(
@@ -3690,6 +3699,8 @@ extension CachedFileInfoDto: Sendable {}
 @_documentation(visibility: private)
 #endif
 struct FfiConverterTypeCachedFileInfoDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
+
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CachedFileInfoDto {
         return
             try CachedFileInfoDto(
@@ -3777,6 +3788,8 @@ extension CachedRepoInfoDto: Sendable {}
 @_documentation(visibility: private)
 #endif
 struct FfiConverterTypeCachedRepoInfoDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
+
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CachedRepoInfoDto {
         return
             try CachedRepoInfoDto(
@@ -3854,6 +3867,8 @@ extension CachedRevisionInfoDto: Sendable {}
 @_documentation(visibility: private)
 #endif
 struct FfiConverterTypeCachedRevisionInfoDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
+
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CachedRevisionInfoDto {
         return
             try CachedRevisionInfoDto(
@@ -3921,6 +3936,8 @@ extension CommitAuthorDto: Sendable {}
 @_documentation(visibility: private)
 #endif
 struct FfiConverterTypeCommitAuthorDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
+
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CommitAuthorDto {
         return
             try CommitAuthorDto(
@@ -3989,6 +4006,8 @@ extension CommitInfoDto: Sendable {}
 @_documentation(visibility: private)
 #endif
 struct FfiConverterTypeCommitInfoDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
+
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CommitInfoDto {
         return
             try CommitInfoDto(
@@ -4110,6 +4129,8 @@ extension DatasetInfoDto: Sendable {}
 @_documentation(visibility: private)
 #endif
 struct FfiConverterTypeDatasetInfoDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
+
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> DatasetInfoDto {
         return
             try DatasetInfoDto(
@@ -4217,6 +4238,8 @@ extension DeleteCacheStrategyDto: Sendable {}
 @_documentation(visibility: private)
 #endif
 struct FfiConverterTypeDeleteCacheStrategyDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
+
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> DeleteCacheStrategyDto {
         return
             try DeleteCacheStrategyDto(
@@ -4285,6 +4308,8 @@ extension ExecuteResultDto: Sendable {}
 @_documentation(visibility: private)
 #endif
 struct FfiConverterTypeExecuteResultDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
+
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ExecuteResultDto {
         return
             try ExecuteResultDto(
@@ -4342,6 +4367,8 @@ extension FailureDto: Sendable {}
 @_documentation(visibility: private)
 #endif
 struct FfiConverterTypeFailureDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
+
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FailureDto {
         return
             try FailureDto(
@@ -4409,6 +4436,8 @@ extension FileMetadataDto: Sendable {}
 @_documentation(visibility: private)
 #endif
 struct FfiConverterTypeFileMetadataDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
+
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FileMetadataDto {
         return
             try FileMetadataDto(
@@ -4478,6 +4507,8 @@ extension FileProgressDto: Sendable {}
 @_documentation(visibility: private)
 #endif
 struct FfiConverterTypeFileProgressDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
+
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FileProgressDto {
         return
             try FileProgressDto(
@@ -4541,6 +4572,8 @@ extension GatedNotificationsDto: Sendable {}
 @_documentation(visibility: private)
 #endif
 struct FfiConverterTypeGatedNotificationsDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
+
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> GatedNotificationsDto {
         return
             try GatedNotificationsDto(
@@ -4610,6 +4643,8 @@ extension GitCommitInfoDto: Sendable {}
 @_documentation(visibility: private)
 #endif
 struct FfiConverterTypeGitCommitInfoDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
+
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> GitCommitInfoDto {
         return
             try GitCommitInfoDto(
@@ -4681,6 +4716,8 @@ extension GitRefInfoDto: Sendable {}
 @_documentation(visibility: private)
 #endif
 struct FfiConverterTypeGitRefInfoDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
+
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> GitRefInfoDto {
         return
             try GitRefInfoDto(
@@ -4744,6 +4781,8 @@ extension GitRefsDto: Sendable {}
 @_documentation(visibility: private)
 #endif
 struct FfiConverterTypeGitRefsDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
+
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> GitRefsDto {
         return
             try GitRefsDto(
@@ -4809,6 +4848,8 @@ extension HfCacheInfoDto: Sendable {}
 @_documentation(visibility: private)
 #endif
 struct FfiConverterTypeHFCacheInfoDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
+
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HfCacheInfoDto {
         return
             try HfCacheInfoDto(
@@ -4885,6 +4926,8 @@ extension HfClientOptionsDto: Sendable {}
 @_documentation(visibility: private)
 #endif
 struct FfiConverterTypeHFClientOptionsDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
+
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HfClientOptionsDto {
         return
             try HfClientOptionsDto(
@@ -4962,6 +5005,8 @@ extension HfFileDiffDto: Sendable {}
 @_documentation(visibility: private)
 #endif
 struct FfiConverterTypeHFFileDiffDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
+
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HfFileDiffDto {
         return
             try HfFileDiffDto(
@@ -5037,6 +5082,8 @@ extension HttpErrorContextDto: Sendable {}
 @_documentation(visibility: private)
 #endif
 struct FfiConverterTypeHttpErrorContextDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
+
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HttpErrorContextDto {
         return
             try HttpErrorContextDto(
@@ -5109,6 +5156,8 @@ extension InferenceProviderMappingDto: Sendable {}
 @_documentation(visibility: private)
 #endif
 struct FfiConverterTypeInferenceProviderMappingDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
+
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> InferenceProviderMappingDto {
         return
             try InferenceProviderMappingDto(
@@ -5178,6 +5227,8 @@ extension LastCommitInfoDto: Sendable {}
 @_documentation(visibility: private)
 #endif
 struct FfiConverterTypeLastCommitInfoDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
+
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LastCommitInfoDto {
         return
             try LastCommitInfoDto(
@@ -5355,6 +5406,8 @@ extension ModelInfoDto: Sendable {}
 @_documentation(visibility: private)
 #endif
 struct FfiConverterTypeModelInfoDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
+
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ModelInfoDto {
         return
             try ModelInfoDto(
@@ -5479,6 +5532,8 @@ extension OrgMembershipDto: Sendable {}
 @_documentation(visibility: private)
 #endif
 struct FfiConverterTypeOrgMembershipDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
+
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> OrgMembershipDto {
         return
             try OrgMembershipDto(
@@ -5540,6 +5595,8 @@ extension RepoSiblingDto: Sendable {}
 @_documentation(visibility: private)
 #endif
 struct FfiConverterTypeRepoSiblingDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
+
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> RepoSiblingDto {
         return
             try RepoSiblingDto(
@@ -5597,6 +5654,8 @@ extension RepoUrlDto: Sendable {}
 @_documentation(visibility: private)
 #endif
 struct FfiConverterTypeRepoUrlDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
+
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> RepoUrlDto {
         return
             try RepoUrlDto(
@@ -5649,6 +5708,8 @@ extension SafeTensorsInfoDto: Sendable {}
 @_documentation(visibility: private)
 #endif
 struct FfiConverterTypeSafeTensorsInfoDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
+
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SafeTensorsInfoDto {
         return
             try SafeTensorsInfoDto(
@@ -5707,6 +5768,8 @@ extension TransformersInfoDto: Sendable {}
 @_documentation(visibility: private)
 #endif
 struct FfiConverterTypeTransformersInfoDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
+
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TransformersInfoDto {
         return
             try TransformersInfoDto(
@@ -5812,6 +5875,8 @@ extension UserDto: Sendable {}
 @_documentation(visibility: private)
 #endif
 struct FfiConverterTypeUserDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
+
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> UserDto {
         return
             try UserDto(
@@ -5911,6 +5976,7 @@ extension CacheDeletionErrorFfi: Sendable {}
 @_documentation(visibility: private)
 #endif
 struct FfiConverterTypeCacheDeletionErrorFFI: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
     typealias SwiftType = CacheDeletionErrorFfi
 
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CacheDeletionErrorFfi {
@@ -5988,6 +6054,7 @@ extension CommitOperationDto: Sendable {}
 @_documentation(visibility: private)
 #endif
 struct FfiConverterTypeCommitOperationDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
     typealias SwiftType = CommitOperationDto
 
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CommitOperationDto {
@@ -6081,6 +6148,7 @@ extension DownloadEventDto: Sendable {}
 @_documentation(visibility: private)
 #endif
 struct FfiConverterTypeDownloadEventDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
     typealias SwiftType = DownloadEventDto
 
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> DownloadEventDto {
@@ -6175,6 +6243,7 @@ extension FileStatusDto: Sendable {}
 @_documentation(visibility: private)
 #endif
 struct FfiConverterTypeFileStatusDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
     typealias SwiftType = FileStatusDto
 
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FileStatusDto {
@@ -6253,6 +6322,7 @@ extension GatedApprovalModeDto: Sendable {}
 @_documentation(visibility: private)
 #endif
 struct FfiConverterTypeGatedApprovalModeDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
     typealias SwiftType = GatedApprovalModeDto
 
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> GatedApprovalModeDto {
@@ -6328,6 +6398,7 @@ extension GatedNotificationsModeDto: Sendable {}
 @_documentation(visibility: private)
 #endif
 struct FfiConverterTypeGatedNotificationsModeDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
     typealias SwiftType = GatedNotificationsModeDto
 
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> GatedNotificationsModeDto {
@@ -6404,6 +6475,7 @@ extension GitStatusDto: Sendable {}
 @_documentation(visibility: private)
 #endif
 struct FfiConverterTypeGitStatusDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
     typealias SwiftType = GitStatusDto
 
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> GitStatusDto {
@@ -6518,6 +6590,7 @@ extension GlobMatcherErrorFfi: Sendable {}
 @_documentation(visibility: private)
 #endif
 struct FfiConverterTypeGlobMatcherErrorFFI: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
     typealias SwiftType = GlobMatcherErrorFfi
 
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> GlobMatcherErrorFfi {
@@ -6646,6 +6719,7 @@ extension HfErrorFfi: Sendable {}
 @_documentation(visibility: private)
 #endif
 struct FfiConverterTypeHFErrorFFI: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
     typealias SwiftType = HfErrorFfi
 
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HfErrorFfi {
@@ -6902,6 +6976,7 @@ extension PathKindDto: Sendable {}
 @_documentation(visibility: private)
 #endif
 struct FfiConverterTypePathKindDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
     typealias SwiftType = PathKindDto
 
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PathKindDto {
@@ -7011,6 +7086,7 @@ extension RepoIdValidationErrorFfi: Sendable {}
 @_documentation(visibility: private)
 #endif
 struct FfiConverterTypeRepoIdValidationErrorFFI: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
     typealias SwiftType = RepoIdValidationErrorFfi
 
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> RepoIdValidationErrorFfi {
@@ -7142,6 +7218,7 @@ extension RepoTreeEntryDto: Sendable {}
 @_documentation(visibility: private)
 #endif
 struct FfiConverterTypeRepoTreeEntryDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
     typealias SwiftType = RepoTreeEntryDto
 
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> RepoTreeEntryDto {
@@ -7227,6 +7304,7 @@ extension RepoTypeDto: Sendable {}
 @_documentation(visibility: private)
 #endif
 struct FfiConverterTypeRepoTypeDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
     typealias SwiftType = RepoTypeDto
 
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> RepoTypeDto {
@@ -7317,6 +7395,7 @@ extension RequestErrorKindDto: Sendable {}
 @_documentation(visibility: private)
 #endif
 struct FfiConverterTypeRequestErrorKindDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
     typealias SwiftType = RequestErrorKindDto
 
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> RequestErrorKindDto {
@@ -7404,6 +7483,7 @@ extension SegmentRoleDto: Sendable {}
 @_documentation(visibility: private)
 #endif
 struct FfiConverterTypeSegmentRoleDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
     typealias SwiftType = SegmentRoleDto
 
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SegmentRoleDto {
@@ -7486,6 +7566,7 @@ extension TokenProviderErrorFfi: Sendable {}
 @_documentation(visibility: private)
 #endif
 struct FfiConverterTypeTokenProviderErrorFFI: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
     typealias SwiftType = TokenProviderErrorFfi
 
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TokenProviderErrorFfi {
@@ -7575,6 +7656,7 @@ extension UploadEventDto: Sendable {}
 @_documentation(visibility: private)
 #endif
 struct FfiConverterTypeUploadEventDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
     typealias SwiftType = UploadEventDto
 
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> UploadEventDto {
@@ -7673,6 +7755,7 @@ extension UploadSourceDto: Sendable {}
 @_documentation(visibility: private)
 #endif
 struct FfiConverterTypeUploadSourceDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
     typealias SwiftType = UploadSourceDto
 
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> UploadSourceDto {
@@ -7751,6 +7834,7 @@ extension XetOperationDto: Sendable {}
 @_documentation(visibility: private)
 #endif
 struct FfiConverterTypeXetOperationDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
     typealias SwiftType = XetOperationDto
 
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> XetOperationDto {
@@ -7830,6 +7914,7 @@ func FfiConverterTypeXetOperationDTO_lower(_ value: XetOperationDto) -> RustBuff
 @_documentation(visibility: private)
 #endif
 fileprivate struct FfiConverterOptionUInt32: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
     typealias SwiftType = UInt32?
 
     public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
@@ -7854,6 +7939,7 @@ fileprivate struct FfiConverterOptionUInt32: FfiConverterRustBuffer {
 @_documentation(visibility: private)
 #endif
 fileprivate struct FfiConverterOptionUInt64: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
     typealias SwiftType = UInt64?
 
     public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
@@ -7878,6 +7964,7 @@ fileprivate struct FfiConverterOptionUInt64: FfiConverterRustBuffer {
 @_documentation(visibility: private)
 #endif
 fileprivate struct FfiConverterOptionDouble: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
     typealias SwiftType = Double?
 
     public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
@@ -7902,6 +7989,7 @@ fileprivate struct FfiConverterOptionDouble: FfiConverterRustBuffer {
 @_documentation(visibility: private)
 #endif
 fileprivate struct FfiConverterOptionBool: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
     typealias SwiftType = Bool?
 
     public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
@@ -7926,6 +8014,7 @@ fileprivate struct FfiConverterOptionBool: FfiConverterRustBuffer {
 @_documentation(visibility: private)
 #endif
 fileprivate struct FfiConverterOptionString: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
     typealias SwiftType = String?
 
     public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
@@ -7950,6 +8039,7 @@ fileprivate struct FfiConverterOptionString: FfiConverterRustBuffer {
 @_documentation(visibility: private)
 #endif
 fileprivate struct FfiConverterOptionTypeFFIDownloadProgressHandler: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
     typealias SwiftType = FfiDownloadProgressHandler?
 
     public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
@@ -7974,6 +8064,7 @@ fileprivate struct FfiConverterOptionTypeFFIDownloadProgressHandler: FfiConverte
 @_documentation(visibility: private)
 #endif
 fileprivate struct FfiConverterOptionTypeFFIUploadProgressHandler: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
     typealias SwiftType = FfiUploadProgressHandler?
 
     public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
@@ -7998,6 +8089,7 @@ fileprivate struct FfiConverterOptionTypeFFIUploadProgressHandler: FfiConverterR
 @_documentation(visibility: private)
 #endif
 fileprivate struct FfiConverterOptionTypeOperationHandle: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
     typealias SwiftType = OperationHandle?
 
     public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
@@ -8022,6 +8114,7 @@ fileprivate struct FfiConverterOptionTypeOperationHandle: FfiConverterRustBuffer
 @_documentation(visibility: private)
 #endif
 fileprivate struct FfiConverterOptionTypeBlobLfsInfoDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
     typealias SwiftType = BlobLfsInfoDto?
 
     public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
@@ -8046,6 +8139,7 @@ fileprivate struct FfiConverterOptionTypeBlobLfsInfoDTO: FfiConverterRustBuffer 
 @_documentation(visibility: private)
 #endif
 fileprivate struct FfiConverterOptionTypeBlobSecurityInfoDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
     typealias SwiftType = BlobSecurityInfoDto?
 
     public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
@@ -8070,6 +8164,7 @@ fileprivate struct FfiConverterOptionTypeBlobSecurityInfoDTO: FfiConverterRustBu
 @_documentation(visibility: private)
 #endif
 fileprivate struct FfiConverterOptionTypeDatasetInfoDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
     typealias SwiftType = DatasetInfoDto?
 
     public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
@@ -8094,6 +8189,7 @@ fileprivate struct FfiConverterOptionTypeDatasetInfoDTO: FfiConverterRustBuffer 
 @_documentation(visibility: private)
 #endif
 fileprivate struct FfiConverterOptionTypeGatedNotificationsDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
     typealias SwiftType = GatedNotificationsDto?
 
     public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
@@ -8118,6 +8214,7 @@ fileprivate struct FfiConverterOptionTypeGatedNotificationsDTO: FfiConverterRust
 @_documentation(visibility: private)
 #endif
 fileprivate struct FfiConverterOptionTypeHttpErrorContextDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
     typealias SwiftType = HttpErrorContextDto?
 
     public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
@@ -8142,6 +8239,7 @@ fileprivate struct FfiConverterOptionTypeHttpErrorContextDTO: FfiConverterRustBu
 @_documentation(visibility: private)
 #endif
 fileprivate struct FfiConverterOptionTypeLastCommitInfoDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
     typealias SwiftType = LastCommitInfoDto?
 
     public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
@@ -8166,6 +8264,7 @@ fileprivate struct FfiConverterOptionTypeLastCommitInfoDTO: FfiConverterRustBuff
 @_documentation(visibility: private)
 #endif
 fileprivate struct FfiConverterOptionTypeModelInfoDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
     typealias SwiftType = ModelInfoDto?
 
     public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
@@ -8190,6 +8289,7 @@ fileprivate struct FfiConverterOptionTypeModelInfoDTO: FfiConverterRustBuffer {
 @_documentation(visibility: private)
 #endif
 fileprivate struct FfiConverterOptionTypeSafeTensorsInfoDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
     typealias SwiftType = SafeTensorsInfoDto?
 
     public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
@@ -8214,6 +8314,7 @@ fileprivate struct FfiConverterOptionTypeSafeTensorsInfoDTO: FfiConverterRustBuf
 @_documentation(visibility: private)
 #endif
 fileprivate struct FfiConverterOptionTypeTransformersInfoDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
     typealias SwiftType = TransformersInfoDto?
 
     public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
@@ -8238,6 +8339,7 @@ fileprivate struct FfiConverterOptionTypeTransformersInfoDTO: FfiConverterRustBu
 @_documentation(visibility: private)
 #endif
 fileprivate struct FfiConverterOptionTypeGatedApprovalModeDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
     typealias SwiftType = GatedApprovalModeDto?
 
     public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
@@ -8262,6 +8364,7 @@ fileprivate struct FfiConverterOptionTypeGatedApprovalModeDTO: FfiConverterRustB
 @_documentation(visibility: private)
 #endif
 fileprivate struct FfiConverterOptionSequenceString: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
     typealias SwiftType = [String]?
 
     public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
@@ -8286,6 +8389,7 @@ fileprivate struct FfiConverterOptionSequenceString: FfiConverterRustBuffer {
 @_documentation(visibility: private)
 #endif
 fileprivate struct FfiConverterOptionSequenceTypeInferenceProviderMappingDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
     typealias SwiftType = [InferenceProviderMappingDto]?
 
     public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
@@ -8310,6 +8414,7 @@ fileprivate struct FfiConverterOptionSequenceTypeInferenceProviderMappingDTO: Ff
 @_documentation(visibility: private)
 #endif
 fileprivate struct FfiConverterOptionSequenceTypeOrgMembershipDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
     typealias SwiftType = [OrgMembershipDto]?
 
     public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
@@ -8334,6 +8439,7 @@ fileprivate struct FfiConverterOptionSequenceTypeOrgMembershipDTO: FfiConverterR
 @_documentation(visibility: private)
 #endif
 fileprivate struct FfiConverterOptionSequenceTypeRepoSiblingDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
     typealias SwiftType = [RepoSiblingDto]?
 
     public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
@@ -8358,6 +8464,7 @@ fileprivate struct FfiConverterOptionSequenceTypeRepoSiblingDTO: FfiConverterRus
 @_documentation(visibility: private)
 #endif
 fileprivate struct FfiConverterSequenceString: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
     typealias SwiftType = [String]
 
     public static func write(_ value: [String], into buf: inout [UInt8]) {
@@ -8383,6 +8490,7 @@ fileprivate struct FfiConverterSequenceString: FfiConverterRustBuffer {
 @_documentation(visibility: private)
 #endif
 fileprivate struct FfiConverterSequenceTypeCachedFileInfoDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
     typealias SwiftType = [CachedFileInfoDto]
 
     public static func write(_ value: [CachedFileInfoDto], into buf: inout [UInt8]) {
@@ -8408,6 +8516,7 @@ fileprivate struct FfiConverterSequenceTypeCachedFileInfoDTO: FfiConverterRustBu
 @_documentation(visibility: private)
 #endif
 fileprivate struct FfiConverterSequenceTypeCachedRepoInfoDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
     typealias SwiftType = [CachedRepoInfoDto]
 
     public static func write(_ value: [CachedRepoInfoDto], into buf: inout [UInt8]) {
@@ -8433,6 +8542,7 @@ fileprivate struct FfiConverterSequenceTypeCachedRepoInfoDTO: FfiConverterRustBu
 @_documentation(visibility: private)
 #endif
 fileprivate struct FfiConverterSequenceTypeCachedRevisionInfoDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
     typealias SwiftType = [CachedRevisionInfoDto]
 
     public static func write(_ value: [CachedRevisionInfoDto], into buf: inout [UInt8]) {
@@ -8458,6 +8568,7 @@ fileprivate struct FfiConverterSequenceTypeCachedRevisionInfoDTO: FfiConverterRu
 @_documentation(visibility: private)
 #endif
 fileprivate struct FfiConverterSequenceTypeCommitAuthorDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
     typealias SwiftType = [CommitAuthorDto]
 
     public static func write(_ value: [CommitAuthorDto], into buf: inout [UInt8]) {
@@ -8483,6 +8594,7 @@ fileprivate struct FfiConverterSequenceTypeCommitAuthorDTO: FfiConverterRustBuff
 @_documentation(visibility: private)
 #endif
 fileprivate struct FfiConverterSequenceTypeDatasetInfoDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
     typealias SwiftType = [DatasetInfoDto]
 
     public static func write(_ value: [DatasetInfoDto], into buf: inout [UInt8]) {
@@ -8508,6 +8620,7 @@ fileprivate struct FfiConverterSequenceTypeDatasetInfoDTO: FfiConverterRustBuffe
 @_documentation(visibility: private)
 #endif
 fileprivate struct FfiConverterSequenceTypeFailureDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
     typealias SwiftType = [FailureDto]
 
     public static func write(_ value: [FailureDto], into buf: inout [UInt8]) {
@@ -8533,6 +8646,7 @@ fileprivate struct FfiConverterSequenceTypeFailureDTO: FfiConverterRustBuffer {
 @_documentation(visibility: private)
 #endif
 fileprivate struct FfiConverterSequenceTypeFileProgressDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
     typealias SwiftType = [FileProgressDto]
 
     public static func write(_ value: [FileProgressDto], into buf: inout [UInt8]) {
@@ -8558,6 +8672,7 @@ fileprivate struct FfiConverterSequenceTypeFileProgressDTO: FfiConverterRustBuff
 @_documentation(visibility: private)
 #endif
 fileprivate struct FfiConverterSequenceTypeGitCommitInfoDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
     typealias SwiftType = [GitCommitInfoDto]
 
     public static func write(_ value: [GitCommitInfoDto], into buf: inout [UInt8]) {
@@ -8583,6 +8698,7 @@ fileprivate struct FfiConverterSequenceTypeGitCommitInfoDTO: FfiConverterRustBuf
 @_documentation(visibility: private)
 #endif
 fileprivate struct FfiConverterSequenceTypeGitRefInfoDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
     typealias SwiftType = [GitRefInfoDto]
 
     public static func write(_ value: [GitRefInfoDto], into buf: inout [UInt8]) {
@@ -8608,6 +8724,7 @@ fileprivate struct FfiConverterSequenceTypeGitRefInfoDTO: FfiConverterRustBuffer
 @_documentation(visibility: private)
 #endif
 fileprivate struct FfiConverterSequenceTypeHFFileDiffDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
     typealias SwiftType = [HfFileDiffDto]
 
     public static func write(_ value: [HfFileDiffDto], into buf: inout [UInt8]) {
@@ -8633,6 +8750,7 @@ fileprivate struct FfiConverterSequenceTypeHFFileDiffDTO: FfiConverterRustBuffer
 @_documentation(visibility: private)
 #endif
 fileprivate struct FfiConverterSequenceTypeInferenceProviderMappingDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
     typealias SwiftType = [InferenceProviderMappingDto]
 
     public static func write(_ value: [InferenceProviderMappingDto], into buf: inout [UInt8]) {
@@ -8658,6 +8776,7 @@ fileprivate struct FfiConverterSequenceTypeInferenceProviderMappingDTO: FfiConve
 @_documentation(visibility: private)
 #endif
 fileprivate struct FfiConverterSequenceTypeModelInfoDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
     typealias SwiftType = [ModelInfoDto]
 
     public static func write(_ value: [ModelInfoDto], into buf: inout [UInt8]) {
@@ -8683,6 +8802,7 @@ fileprivate struct FfiConverterSequenceTypeModelInfoDTO: FfiConverterRustBuffer 
 @_documentation(visibility: private)
 #endif
 fileprivate struct FfiConverterSequenceTypeOrgMembershipDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
     typealias SwiftType = [OrgMembershipDto]
 
     public static func write(_ value: [OrgMembershipDto], into buf: inout [UInt8]) {
@@ -8708,6 +8828,7 @@ fileprivate struct FfiConverterSequenceTypeOrgMembershipDTO: FfiConverterRustBuf
 @_documentation(visibility: private)
 #endif
 fileprivate struct FfiConverterSequenceTypeRepoSiblingDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
     typealias SwiftType = [RepoSiblingDto]
 
     public static func write(_ value: [RepoSiblingDto], into buf: inout [UInt8]) {
@@ -8733,6 +8854,7 @@ fileprivate struct FfiConverterSequenceTypeRepoSiblingDTO: FfiConverterRustBuffe
 @_documentation(visibility: private)
 #endif
 fileprivate struct FfiConverterSequenceTypeCommitOperationDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
     typealias SwiftType = [CommitOperationDto]
 
     public static func write(_ value: [CommitOperationDto], into buf: inout [UInt8]) {
@@ -8758,6 +8880,7 @@ fileprivate struct FfiConverterSequenceTypeCommitOperationDTO: FfiConverterRustB
 @_documentation(visibility: private)
 #endif
 fileprivate struct FfiConverterSequenceTypeRepoTreeEntryDTO: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
     typealias SwiftType = [RepoTreeEntryDto]
 
     public static func write(_ value: [RepoTreeEntryDto], into buf: inout [UInt8]) {
@@ -8783,6 +8906,8 @@ fileprivate struct FfiConverterSequenceTypeRepoTreeEntryDTO: FfiConverterRustBuf
 @_documentation(visibility: private)
 #endif
 fileprivate struct FfiConverterDictionaryStringUInt64: FfiConverterRustBuffer {
+    typealias FfiType = RustBuffer
+
     public static func write(_ value: [String: UInt64], into buf: inout [UInt8]) {
         let len = Int32(value.count)
         writeInt(&buf, len)
