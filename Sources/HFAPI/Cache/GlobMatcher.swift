@@ -20,13 +20,11 @@ import HFAPIFFI
 /// Patterns are matched against the full repo-relative path (e.g.,
 /// `subdir/file.json`), not just the basename.
 struct GlobMatcher: Sendable {
-    let pattern: String
     private let inner: FfiGlobMatcher
 
     /// Compile a pattern. Returns `nil` if the pattern is malformed.
     init?(_ pattern: String) {
         guard let inner = try? FfiGlobMatcher.tryNew(pattern: pattern) else { return nil }
-        self.pattern = pattern
         self.inner = inner
     }
 

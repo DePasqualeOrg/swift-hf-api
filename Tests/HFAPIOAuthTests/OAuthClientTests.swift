@@ -12,7 +12,6 @@ import Testing
 #endif
 
 @testable import HFAPIOAuth
-import HFAPIShared
 
 #if swift(>=6.1)
     @Suite("OAuth Client Tests", .serialized)

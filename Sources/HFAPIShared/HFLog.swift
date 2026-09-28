@@ -12,7 +12,7 @@ import Foundation
 /// `[level subsystem/category]` prefix and a trailing newline.
 ///
 /// The shape mirrors the small subset of `os.Logger` the library
-/// actually uses: `debug`, `info`, `warning`, `error`. Messages are
+/// actually uses: `warning` and `error`. Messages are
 /// emitted with `.public` privacy on Apple. The library intentionally
 /// never logs token material or user-identifying data; callers reaching
 /// for `HFLog` should follow the same rule. If a future caller needs
@@ -33,22 +33,6 @@ package struct HFLog: Sendable {
         #else
             self.subsystem = subsystem
             self.category = category
-        #endif
-    }
-
-    package func debug(_ message: String) {
-        #if canImport(os)
-            logger.debug("\(message, privacy: .public)")
-        #else
-            emit(level: "debug", message: message)
-        #endif
-    }
-
-    package func info(_ message: String) {
-        #if canImport(os)
-            logger.info("\(message, privacy: .public)")
-        #else
-            emit(level: "info", message: message)
         #endif
     }
 

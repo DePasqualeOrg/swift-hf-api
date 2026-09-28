@@ -8,26 +8,6 @@ import Testing
     import FoundationNetworking
 #endif
 
-// MARK: - Thread-Safe Counter
-
-/// Thread-safe counter for testing request counts in Sendable closures.
-final class Counter: @unchecked Sendable {
-    private var count: Int = 0
-    private let lock = NSLock()
-
-    var value: Int {
-        lock.lock()
-        defer { lock.unlock() }
-        return count
-    }
-
-    func increment() {
-        lock.lock()
-        count += 1
-        lock.unlock()
-    }
-}
-
 // MARK: - Request Handler Storage
 
 /// Stores and manages handlers for MockURLProtocol's request handling.
@@ -90,11 +70,6 @@ final class MockURLProtocol: URLProtocol {
         _ handler: @Sendable @escaping (URLRequest) throws -> (HTTPURLResponse, Data)
     ) async {
         requestHandlerStorage.setHandler(handler)
-    }
-
-    /// When set, the next handler's response body is sent in chunks of this size (for progress tests).
-    static func setChunkSize(_ size: Int?) {
-        requestHandlerStorage.setChunkSize(size)
     }
 
     override class func canInit(with request: URLRequest) -> Bool {

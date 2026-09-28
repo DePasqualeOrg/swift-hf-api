@@ -1,0 +1,12 @@
+retain_public: true
+retain_codable_properties: true
+report_include:
+  - Sources/HFAPI/**
+  - Sources/HFAPIOAuth/**
+  - Sources/HFAPIHubAuth/**
+  - Sources/HFAPIShared/**
+  - Tests/**
+relative_results: true
+strict: true
+disable_update_check: true
+skip_build: true

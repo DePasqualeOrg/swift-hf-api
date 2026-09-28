@@ -9,7 +9,6 @@ import Foundation
 import Testing
 
 @testable import HFAPIOAuth
-import HFAPIShared
 
 #if swift(>=6.1) && canImport(AuthenticationServices)
     @Suite("HuggingFace Authentication Manager Tests")

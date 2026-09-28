@@ -3,17 +3,6 @@
 import Foundation
 import HFAPIFFI
 
-extension RepoType {
-    /// Cache folder prefix used by Hugging Face Hub conventions:
-    /// `models--owner--name` for models, `datasets--owner--name` for datasets.
-    var cacheFolderPrefix: String {
-        switch self {
-        case .model: "models"
-        case .dataset: "datasets"
-        }
-    }
-}
-
 /// Hugging Face Hub repository identifier in `owner/name` form.
 ///
 /// The Hub canonicalizes every repository to a two-segment identifier. Legacy

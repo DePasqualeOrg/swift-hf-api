@@ -1,0 +1,8 @@
+--minversion 0.63.0
+--exclude .build,.test-harness,Artifacts,rust/target,Sources/HFAPIFFI/Generated
+--indent 4
+--swiftversion 6.2
+
+# Keep the current source layout while formatting touched Swift files.
+--disable all
+--enable consecutiveBlankLines,linebreakAtEndOfFile,spaceAroundOperators,spaceInsideParens,trailingSpace
