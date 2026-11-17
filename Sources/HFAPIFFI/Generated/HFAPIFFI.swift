@@ -47,6 +47,13 @@ fileprivate extension ForeignBytes {
             data: rawBufferPointer.baseAddress?.assumingMemoryBound(to: UInt8.self)
         )
     }
+
+    init(mutableRawBufferPointer: UnsafeMutableRawBufferPointer) {
+        self.init(
+            len: Int32(mutableRawBufferPointer.count),
+            data: mutableRawBufferPointer.baseAddress?.assumingMemoryBound(to: UInt8.self)
+        )
+    }
 }
 
 // Converter for `&[u8]` / `[ByRef] bytes` arguments.
@@ -85,6 +92,21 @@ fileprivate enum FfiConverterByRefBytes: FfiConverter {
 
     static func write(_ value: Data, into buf: inout [UInt8]) {
         fatalError("ByRef bytes cannot be written to a buffer: zero-copy &[u8] is only supported in argument position, not nested in records/options/etc.")
+    }
+}
+
+// Converter for `&mut [u8]` / `[ByMutRef] bytes` arguments.
+//
+// Zero-copy and foreign -> Rust only, like `FfiConverterByRefBytes`, but the
+// buffer is writable: Rust's writes through the pointer land directly in the
+// caller's `Data`. The scope-bound `lower(_:_body:)` takes the `Data` `inout`
+// and runs the full FFI call inside `withUnsafeMutableBytes`, whose pointer is
+// only valid for the closure's duration.
+fileprivate enum FfiConverterByMutRefBytes {
+    static func lower<R>(_ value: inout Data, _ body: (ForeignBytes) throws -> R) rethrows -> R {
+        return try value.withUnsafeMutableBytes { rawBuf in
+            try body(ForeignBytes(mutableRawBufferPointer: rawBuf))
+        }
     }
 }
 
@@ -773,7 +795,7 @@ func FfiConverterTypeDatasetInfoListingFFI_lift(_ handle: UInt64) throws -> Data
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-func FfiConverterTypeDatasetInfoListingFFI_lower(_ value: DatasetInfoListingFfi) -> UInt64 {
+@Sendable func FfiConverterTypeDatasetInfoListingFFI_lower(_ value: DatasetInfoListingFfi) -> UInt64 {
     return FfiConverterTypeDatasetInfoListingFFI.lower(value)
 }
 
@@ -915,7 +937,9 @@ fileprivate struct UniffiCallbackInterfaceFFIByteChunkHandler {
             uniffiOutReturn: UnsafeMutableRawPointer,
             uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
         ) in
-            let makeCall = {
+            nonisolated(unsafe) let chunk = chunk
+
+            let makeCall: @Sendable () throws -> () = {
                 () throws -> () in
                 guard let uniffiObj = try? FfiConverterTypeFFIByteChunkHandler.handleMap.get(handle: uniffiHandle) else {
                     throw UniffiInternalError.unexpectedStaleHandle
@@ -1003,7 +1027,7 @@ func FfiConverterTypeFFIByteChunkHandler_lift(_ handle: UInt64) throws -> FfiByt
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-func FfiConverterTypeFFIByteChunkHandler_lower(_ value: FfiByteChunkHandler) -> UInt64 {
+@Sendable func FfiConverterTypeFFIByteChunkHandler_lower(_ value: FfiByteChunkHandler) -> UInt64 {
     return FfiConverterTypeFFIByteChunkHandler.lower(value)
 }
 
@@ -1145,7 +1169,9 @@ fileprivate struct UniffiCallbackInterfaceFFIDownloadProgressHandler {
             uniffiOutReturn: UnsafeMutableRawPointer,
             uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
         ) in
-            let makeCall = {
+            nonisolated(unsafe) let event = event
+
+            let makeCall: @Sendable () throws -> () = {
                 () throws -> () in
                 guard let uniffiObj = try? FfiConverterTypeFFIDownloadProgressHandler.handleMap.get(handle: uniffiHandle) else {
                     throw UniffiInternalError.unexpectedStaleHandle
@@ -1233,7 +1259,7 @@ func FfiConverterTypeFFIDownloadProgressHandler_lift(_ handle: UInt64) throws ->
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-func FfiConverterTypeFFIDownloadProgressHandler_lower(_ value: FfiDownloadProgressHandler) -> UInt64 {
+@Sendable func FfiConverterTypeFFIDownloadProgressHandler_lower(_ value: FfiDownloadProgressHandler) -> UInt64 {
     return FfiConverterTypeFFIDownloadProgressHandler.lower(value)
 }
 
@@ -1373,7 +1399,7 @@ func FfiConverterTypeFFIGlobMatcher_lift(_ handle: UInt64) throws -> FfiGlobMatc
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-func FfiConverterTypeFFIGlobMatcher_lower(_ value: FfiGlobMatcher) -> UInt64 {
+@Sendable func FfiConverterTypeFFIGlobMatcher_lower(_ value: FfiGlobMatcher) -> UInt64 {
     return FfiConverterTypeFFIGlobMatcher.lower(value)
 }
 
@@ -1532,7 +1558,8 @@ fileprivate struct UniffiCallbackInterfaceFFITokenProvider {
             uniffiCallbackData: UInt64,
             uniffiOutDroppedCallback: UnsafeMutablePointer<UniffiForeignFutureDroppedCallbackStruct>
         ) in
-            let makeCall = {
+
+            let makeCall: @Sendable () async throws -> String? = {
                 () async throws -> String? in
                 guard let uniffiObj = try? FfiConverterTypeFFITokenProvider.handleMap.get(handle: uniffiHandle) else {
                     throw UniffiInternalError.unexpectedStaleHandle
@@ -1541,7 +1568,7 @@ fileprivate struct UniffiCallbackInterfaceFFITokenProvider {
                 )
             }
 
-            let uniffiHandleSuccess = { (returnValue: String?) in
+            let uniffiHandleSuccess: @Sendable (String?) -> () = { (returnValue) in
                 uniffiFutureCallback(
                     uniffiCallbackData,
                     UniffiForeignFutureResultRustBuffer(
@@ -1550,7 +1577,7 @@ fileprivate struct UniffiCallbackInterfaceFFITokenProvider {
                     )
                 )
             }
-            let uniffiHandleError = { (statusCode, errorBuf) in
+            let uniffiHandleError: @Sendable (Int8, RustBuffer) -> () = { (statusCode, errorBuf) in
                 uniffiFutureCallback(
                     uniffiCallbackData,
                     UniffiForeignFutureResultRustBuffer(
@@ -1637,7 +1664,7 @@ func FfiConverterTypeFFITokenProvider_lift(_ handle: UInt64) throws -> FfiTokenP
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-func FfiConverterTypeFFITokenProvider_lower(_ value: FfiTokenProvider) -> UInt64 {
+@Sendable func FfiConverterTypeFFITokenProvider_lower(_ value: FfiTokenProvider) -> UInt64 {
     return FfiConverterTypeFFITokenProvider.lower(value)
 }
 
@@ -1763,7 +1790,9 @@ fileprivate struct UniffiCallbackInterfaceFFIUploadProgressHandler {
             uniffiOutReturn: UnsafeMutableRawPointer,
             uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
         ) in
-            let makeCall = {
+            nonisolated(unsafe) let event = event
+
+            let makeCall: @Sendable () throws -> () = {
                 () throws -> () in
                 guard let uniffiObj = try? FfiConverterTypeFFIUploadProgressHandler.handleMap.get(handle: uniffiHandle) else {
                     throw UniffiInternalError.unexpectedStaleHandle
@@ -1851,7 +1880,7 @@ func FfiConverterTypeFFIUploadProgressHandler_lift(_ handle: UInt64) throws -> F
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-func FfiConverterTypeFFIUploadProgressHandler_lower(_ value: FfiUploadProgressHandler) -> UInt64 {
+@Sendable func FfiConverterTypeFFIUploadProgressHandler_lower(_ value: FfiUploadProgressHandler) -> UInt64 {
     return FfiConverterTypeFFIUploadProgressHandler.lower(value)
 }
 
@@ -2348,7 +2377,7 @@ func FfiConverterTypeHFClientFFI_lift(_ handle: UInt64) throws -> HfClientFfi {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-func FfiConverterTypeHFClientFFI_lower(_ value: HfClientFfi) -> UInt64 {
+@Sendable func FfiConverterTypeHFClientFFI_lower(_ value: HfClientFfi) -> UInt64 {
     return FfiConverterTypeHFClientFFI.lower(value)
 }
 
@@ -3190,7 +3219,7 @@ func FfiConverterTypeHFRepositoryFFI_lift(_ handle: UInt64) throws -> HfReposito
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-func FfiConverterTypeHFRepositoryFFI_lower(_ value: HfRepositoryFfi) -> UInt64 {
+@Sendable func FfiConverterTypeHFRepositoryFFI_lower(_ value: HfRepositoryFfi) -> UInt64 {
     return FfiConverterTypeHFRepositoryFFI.lower(value)
 }
 
@@ -3377,7 +3406,7 @@ func FfiConverterTypeModelInfoListingFFI_lift(_ handle: UInt64) throws -> ModelI
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-func FfiConverterTypeModelInfoListingFFI_lower(_ value: ModelInfoListingFfi) -> UInt64 {
+@Sendable func FfiConverterTypeModelInfoListingFFI_lower(_ value: ModelInfoListingFfi) -> UInt64 {
     return FfiConverterTypeModelInfoListingFFI.lower(value)
 }
 
@@ -3528,7 +3557,7 @@ func FfiConverterTypeOperationHandle_lift(_ handle: UInt64) throws -> OperationH
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-func FfiConverterTypeOperationHandle_lower(_ value: OperationHandle) -> UInt64 {
+@Sendable func FfiConverterTypeOperationHandle_lower(_ value: OperationHandle) -> UInt64 {
     return FfiConverterTypeOperationHandle.lower(value)
 }
 
@@ -3590,7 +3619,7 @@ func FfiConverterTypeBlobLfsInfoDTO_lift(_ buf: RustBuffer) throws -> BlobLfsInf
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-func FfiConverterTypeBlobLfsInfoDTO_lower(_ value: BlobLfsInfoDto) -> RustBuffer {
+@Sendable func FfiConverterTypeBlobLfsInfoDTO_lower(_ value: BlobLfsInfoDto) -> RustBuffer {
     return FfiConverterTypeBlobLfsInfoDTO.lower(value)
 }
 
@@ -3655,7 +3684,7 @@ func FfiConverterTypeBlobSecurityInfoDTO_lift(_ buf: RustBuffer) throws -> BlobS
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-func FfiConverterTypeBlobSecurityInfoDTO_lower(_ value: BlobSecurityInfoDto) -> RustBuffer {
+@Sendable func FfiConverterTypeBlobSecurityInfoDTO_lower(_ value: BlobSecurityInfoDto) -> RustBuffer {
     return FfiConverterTypeBlobSecurityInfoDTO.lower(value)
 }
 
@@ -3734,7 +3763,7 @@ func FfiConverterTypeCachedFileInfoDTO_lift(_ buf: RustBuffer) throws -> CachedF
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-func FfiConverterTypeCachedFileInfoDTO_lower(_ value: CachedFileInfoDto) -> RustBuffer {
+@Sendable func FfiConverterTypeCachedFileInfoDTO_lower(_ value: CachedFileInfoDto) -> RustBuffer {
     return FfiConverterTypeCachedFileInfoDTO.lower(value)
 }
 
@@ -3827,7 +3856,7 @@ func FfiConverterTypeCachedRepoInfoDTO_lift(_ buf: RustBuffer) throws -> CachedR
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-func FfiConverterTypeCachedRepoInfoDTO_lower(_ value: CachedRepoInfoDto) -> RustBuffer {
+@Sendable func FfiConverterTypeCachedRepoInfoDTO_lower(_ value: CachedRepoInfoDto) -> RustBuffer {
     return FfiConverterTypeCachedRepoInfoDTO.lower(value)
 }
 
@@ -3902,7 +3931,7 @@ func FfiConverterTypeCachedRevisionInfoDTO_lift(_ buf: RustBuffer) throws -> Cac
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-func FfiConverterTypeCachedRevisionInfoDTO_lower(_ value: CachedRevisionInfoDto) -> RustBuffer {
+@Sendable func FfiConverterTypeCachedRevisionInfoDTO_lower(_ value: CachedRevisionInfoDto) -> RustBuffer {
     return FfiConverterTypeCachedRevisionInfoDTO.lower(value)
 }
 
@@ -3965,7 +3994,7 @@ func FfiConverterTypeCommitAuthorDTO_lift(_ buf: RustBuffer) throws -> CommitAut
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-func FfiConverterTypeCommitAuthorDTO_lower(_ value: CommitAuthorDto) -> RustBuffer {
+@Sendable func FfiConverterTypeCommitAuthorDTO_lower(_ value: CommitAuthorDto) -> RustBuffer {
     return FfiConverterTypeCommitAuthorDTO.lower(value)
 }
 
@@ -4041,7 +4070,7 @@ func FfiConverterTypeCommitInfoDTO_lift(_ buf: RustBuffer) throws -> CommitInfoD
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-func FfiConverterTypeCommitInfoDTO_lower(_ value: CommitInfoDto) -> RustBuffer {
+@Sendable func FfiConverterTypeCommitInfoDTO_lower(_ value: CommitInfoDto) -> RustBuffer {
     return FfiConverterTypeCommitInfoDTO.lower(value)
 }
 
@@ -4194,7 +4223,7 @@ func FfiConverterTypeDatasetInfoDTO_lift(_ buf: RustBuffer) throws -> DatasetInf
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-func FfiConverterTypeDatasetInfoDTO_lower(_ value: DatasetInfoDto) -> RustBuffer {
+@Sendable func FfiConverterTypeDatasetInfoDTO_lower(_ value: DatasetInfoDto) -> RustBuffer {
     return FfiConverterTypeDatasetInfoDTO.lower(value)
 }
 
@@ -4275,7 +4304,7 @@ func FfiConverterTypeDeleteCacheStrategyDTO_lift(_ buf: RustBuffer) throws -> De
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-func FfiConverterTypeDeleteCacheStrategyDTO_lower(_ value: DeleteCacheStrategyDto) -> RustBuffer {
+@Sendable func FfiConverterTypeDeleteCacheStrategyDTO_lower(_ value: DeleteCacheStrategyDto) -> RustBuffer {
     return FfiConverterTypeDeleteCacheStrategyDTO.lower(value)
 }
 
@@ -4333,7 +4362,7 @@ func FfiConverterTypeExecuteResultDTO_lift(_ buf: RustBuffer) throws -> ExecuteR
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-func FfiConverterTypeExecuteResultDTO_lower(_ value: ExecuteResultDto) -> RustBuffer {
+@Sendable func FfiConverterTypeExecuteResultDTO_lower(_ value: ExecuteResultDto) -> RustBuffer {
     return FfiConverterTypeExecuteResultDTO.lower(value)
 }
 
@@ -4396,7 +4425,7 @@ func FfiConverterTypeFailureDTO_lift(_ buf: RustBuffer) throws -> FailureDto {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-func FfiConverterTypeFailureDTO_lower(_ value: FailureDto) -> RustBuffer {
+@Sendable func FfiConverterTypeFailureDTO_lower(_ value: FailureDto) -> RustBuffer {
     return FfiConverterTypeFailureDTO.lower(value)
 }
 
@@ -4471,7 +4500,7 @@ func FfiConverterTypeFileMetadataDTO_lift(_ buf: RustBuffer) throws -> FileMetad
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-func FfiConverterTypeFileMetadataDTO_lower(_ value: FileMetadataDto) -> RustBuffer {
+@Sendable func FfiConverterTypeFileMetadataDTO_lower(_ value: FileMetadataDto) -> RustBuffer {
     return FfiConverterTypeFileMetadataDTO.lower(value)
 }
 
@@ -4538,7 +4567,7 @@ func FfiConverterTypeFileProgressDTO_lift(_ buf: RustBuffer) throws -> FileProgr
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-func FfiConverterTypeFileProgressDTO_lower(_ value: FileProgressDto) -> RustBuffer {
+@Sendable func FfiConverterTypeFileProgressDTO_lower(_ value: FileProgressDto) -> RustBuffer {
     return FfiConverterTypeFileProgressDTO.lower(value)
 }
 
@@ -4599,7 +4628,7 @@ func FfiConverterTypeGatedNotificationsDTO_lift(_ buf: RustBuffer) throws -> Gat
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-func FfiConverterTypeGatedNotificationsDTO_lower(_ value: GatedNotificationsDto) -> RustBuffer {
+@Sendable func FfiConverterTypeGatedNotificationsDTO_lower(_ value: GatedNotificationsDto) -> RustBuffer {
     return FfiConverterTypeGatedNotificationsDTO.lower(value)
 }
 
@@ -4682,7 +4711,7 @@ func FfiConverterTypeGitCommitInfoDTO_lift(_ buf: RustBuffer) throws -> GitCommi
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-func FfiConverterTypeGitCommitInfoDTO_lower(_ value: GitCommitInfoDto) -> RustBuffer {
+@Sendable func FfiConverterTypeGitCommitInfoDTO_lower(_ value: GitCommitInfoDto) -> RustBuffer {
     return FfiConverterTypeGitCommitInfoDTO.lower(value)
 }
 
@@ -4745,7 +4774,7 @@ func FfiConverterTypeGitRefInfoDTO_lift(_ buf: RustBuffer) throws -> GitRefInfoD
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-func FfiConverterTypeGitRefInfoDTO_lower(_ value: GitRefInfoDto) -> RustBuffer {
+@Sendable func FfiConverterTypeGitRefInfoDTO_lower(_ value: GitRefInfoDto) -> RustBuffer {
     return FfiConverterTypeGitRefInfoDTO.lower(value)
 }
 
@@ -4812,7 +4841,7 @@ func FfiConverterTypeGitRefsDTO_lift(_ buf: RustBuffer) throws -> GitRefsDto {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-func FfiConverterTypeGitRefsDTO_lower(_ value: GitRefsDto) -> RustBuffer {
+@Sendable func FfiConverterTypeGitRefsDTO_lower(_ value: GitRefsDto) -> RustBuffer {
     return FfiConverterTypeGitRefsDTO.lower(value)
 }
 
@@ -4879,7 +4908,7 @@ func FfiConverterTypeHFCacheInfoDTO_lift(_ buf: RustBuffer) throws -> HfCacheInf
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-func FfiConverterTypeHFCacheInfoDTO_lower(_ value: HfCacheInfoDto) -> RustBuffer {
+@Sendable func FfiConverterTypeHFCacheInfoDTO_lower(_ value: HfCacheInfoDto) -> RustBuffer {
     return FfiConverterTypeHFCacheInfoDTO.lower(value)
 }
 
@@ -4963,7 +4992,7 @@ func FfiConverterTypeHFClientOptionsDTO_lift(_ buf: RustBuffer) throws -> HfClie
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-func FfiConverterTypeHFClientOptionsDTO_lower(_ value: HfClientOptionsDto) -> RustBuffer {
+@Sendable func FfiConverterTypeHFClientOptionsDTO_lower(_ value: HfClientOptionsDto) -> RustBuffer {
     return FfiConverterTypeHFClientOptionsDTO.lower(value)
 }
 
@@ -5042,7 +5071,7 @@ func FfiConverterTypeHFFileDiffDTO_lift(_ buf: RustBuffer) throws -> HfFileDiffD
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-func FfiConverterTypeHFFileDiffDTO_lower(_ value: HfFileDiffDto) -> RustBuffer {
+@Sendable func FfiConverterTypeHFFileDiffDTO_lower(_ value: HfFileDiffDto) -> RustBuffer {
     return FfiConverterTypeHFFileDiffDTO.lower(value)
 }
 
@@ -5117,7 +5146,7 @@ func FfiConverterTypeHttpErrorContextDTO_lift(_ buf: RustBuffer) throws -> HttpE
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-func FfiConverterTypeHttpErrorContextDTO_lower(_ value: HttpErrorContextDto) -> RustBuffer {
+@Sendable func FfiConverterTypeHttpErrorContextDTO_lower(_ value: HttpErrorContextDto) -> RustBuffer {
     return FfiConverterTypeHttpErrorContextDTO.lower(value)
 }
 
@@ -5193,7 +5222,7 @@ func FfiConverterTypeInferenceProviderMappingDTO_lift(_ buf: RustBuffer) throws 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-func FfiConverterTypeInferenceProviderMappingDTO_lower(_ value: InferenceProviderMappingDto) -> RustBuffer {
+@Sendable func FfiConverterTypeInferenceProviderMappingDTO_lower(_ value: InferenceProviderMappingDto) -> RustBuffer {
     return FfiConverterTypeInferenceProviderMappingDTO.lower(value)
 }
 
@@ -5256,7 +5285,7 @@ func FfiConverterTypeLastCommitInfoDTO_lift(_ buf: RustBuffer) throws -> LastCom
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-func FfiConverterTypeLastCommitInfoDTO_lower(_ value: LastCommitInfoDto) -> RustBuffer {
+@Sendable func FfiConverterTypeLastCommitInfoDTO_lower(_ value: LastCommitInfoDto) -> RustBuffer {
     return FfiConverterTypeLastCommitInfoDTO.lower(value)
 }
 
@@ -5497,7 +5526,7 @@ func FfiConverterTypeModelInfoDTO_lift(_ buf: RustBuffer) throws -> ModelInfoDto
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-func FfiConverterTypeModelInfoDTO_lower(_ value: ModelInfoDto) -> RustBuffer {
+@Sendable func FfiConverterTypeModelInfoDTO_lower(_ value: ModelInfoDto) -> RustBuffer {
     return FfiConverterTypeModelInfoDTO.lower(value)
 }
 
@@ -5561,7 +5590,7 @@ func FfiConverterTypeOrgMembershipDTO_lift(_ buf: RustBuffer) throws -> OrgMembe
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-func FfiConverterTypeOrgMembershipDTO_lower(_ value: OrgMembershipDto) -> RustBuffer {
+@Sendable func FfiConverterTypeOrgMembershipDTO_lower(_ value: OrgMembershipDto) -> RustBuffer {
     return FfiConverterTypeOrgMembershipDTO.lower(value)
 }
 
@@ -5624,7 +5653,7 @@ func FfiConverterTypeRepoSiblingDTO_lift(_ buf: RustBuffer) throws -> RepoSiblin
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-func FfiConverterTypeRepoSiblingDTO_lower(_ value: RepoSiblingDto) -> RustBuffer {
+@Sendable func FfiConverterTypeRepoSiblingDTO_lower(_ value: RepoSiblingDto) -> RustBuffer {
     return FfiConverterTypeRepoSiblingDTO.lower(value)
 }
 
@@ -5679,7 +5708,7 @@ func FfiConverterTypeRepoUrlDTO_lift(_ buf: RustBuffer) throws -> RepoUrlDto {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-func FfiConverterTypeRepoUrlDTO_lower(_ value: RepoUrlDto) -> RustBuffer {
+@Sendable func FfiConverterTypeRepoUrlDTO_lower(_ value: RepoUrlDto) -> RustBuffer {
     return FfiConverterTypeRepoUrlDTO.lower(value)
 }
 
@@ -5735,7 +5764,7 @@ func FfiConverterTypeSafeTensorsInfoDTO_lift(_ buf: RustBuffer) throws -> SafeTe
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-func FfiConverterTypeSafeTensorsInfoDTO_lower(_ value: SafeTensorsInfoDto) -> RustBuffer {
+@Sendable func FfiConverterTypeSafeTensorsInfoDTO_lower(_ value: SafeTensorsInfoDto) -> RustBuffer {
     return FfiConverterTypeSafeTensorsInfoDTO.lower(value)
 }
 
@@ -5799,7 +5828,7 @@ func FfiConverterTypeTransformersInfoDTO_lift(_ buf: RustBuffer) throws -> Trans
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-func FfiConverterTypeTransformersInfoDTO_lower(_ value: TransformersInfoDto) -> RustBuffer {
+@Sendable func FfiConverterTypeTransformersInfoDTO_lower(_ value: TransformersInfoDto) -> RustBuffer {
     return FfiConverterTypeTransformersInfoDTO.lower(value)
 }
 
@@ -5940,7 +5969,7 @@ func FfiConverterTypeUserDTO_lift(_ buf: RustBuffer) throws -> UserDto {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-func FfiConverterTypeUserDTO_lower(_ value: UserDto) -> RustBuffer {
+@Sendable func FfiConverterTypeUserDTO_lower(_ value: UserDto) -> RustBuffer {
     return FfiConverterTypeUserDTO.lower(value)
 }
 
@@ -6020,7 +6049,7 @@ func FfiConverterTypeCacheDeletionErrorFFI_lift(_ buf: RustBuffer) throws -> Cac
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-func FfiConverterTypeCacheDeletionErrorFFI_lower(_ value: CacheDeletionErrorFfi) -> RustBuffer {
+@Sendable func FfiConverterTypeCacheDeletionErrorFFI_lower(_ value: CacheDeletionErrorFfi) -> RustBuffer {
     return FfiConverterTypeCacheDeletionErrorFFI.lower(value)
 }
 
@@ -6100,7 +6129,7 @@ func FfiConverterTypeCommitOperationDTO_lift(_ buf: RustBuffer) throws -> Commit
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-func FfiConverterTypeCommitOperationDTO_lower(_ value: CommitOperationDto) -> RustBuffer {
+@Sendable func FfiConverterTypeCommitOperationDTO_lower(_ value: CommitOperationDto) -> RustBuffer {
     return FfiConverterTypeCommitOperationDTO.lower(value)
 }
 
@@ -6213,7 +6242,7 @@ func FfiConverterTypeDownloadEventDTO_lift(_ buf: RustBuffer) throws -> Download
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-func FfiConverterTypeDownloadEventDTO_lower(_ value: DownloadEventDto) -> RustBuffer {
+@Sendable func FfiConverterTypeDownloadEventDTO_lower(_ value: DownloadEventDto) -> RustBuffer {
     return FfiConverterTypeDownloadEventDTO.lower(value)
 }
 
@@ -6290,7 +6319,7 @@ func FfiConverterTypeFileStatusDTO_lift(_ buf: RustBuffer) throws -> FileStatusD
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-func FfiConverterTypeFileStatusDTO_lower(_ value: FileStatusDto) -> RustBuffer {
+@Sendable func FfiConverterTypeFileStatusDTO_lower(_ value: FileStatusDto) -> RustBuffer {
     return FfiConverterTypeFileStatusDTO.lower(value)
 }
 
@@ -6369,7 +6398,7 @@ func FfiConverterTypeGatedApprovalModeDTO_lift(_ buf: RustBuffer) throws -> Gate
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-func FfiConverterTypeGatedApprovalModeDTO_lower(_ value: GatedApprovalModeDto) -> RustBuffer {
+@Sendable func FfiConverterTypeGatedApprovalModeDTO_lower(_ value: GatedApprovalModeDto) -> RustBuffer {
     return FfiConverterTypeGatedApprovalModeDTO.lower(value)
 }
 
@@ -6439,7 +6468,7 @@ func FfiConverterTypeGatedNotificationsModeDTO_lift(_ buf: RustBuffer) throws ->
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-func FfiConverterTypeGatedNotificationsModeDTO_lower(_ value: GatedNotificationsModeDto) -> RustBuffer {
+@Sendable func FfiConverterTypeGatedNotificationsModeDTO_lower(_ value: GatedNotificationsModeDto) -> RustBuffer {
     return FfiConverterTypeGatedNotificationsModeDTO.lower(value)
 }
 
@@ -6552,7 +6581,7 @@ func FfiConverterTypeGitStatusDTO_lift(_ buf: RustBuffer) throws -> GitStatusDto
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-func FfiConverterTypeGitStatusDTO_lower(_ value: GitStatusDto) -> RustBuffer {
+@Sendable func FfiConverterTypeGitStatusDTO_lower(_ value: GitStatusDto) -> RustBuffer {
     return FfiConverterTypeGitStatusDTO.lower(value)
 }
 
@@ -6634,7 +6663,7 @@ func FfiConverterTypeGlobMatcherErrorFFI_lift(_ buf: RustBuffer) throws -> GlobM
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-func FfiConverterTypeGlobMatcherErrorFFI_lower(_ value: GlobMatcherErrorFfi) -> RustBuffer {
+@Sendable func FfiConverterTypeGlobMatcherErrorFFI_lower(_ value: GlobMatcherErrorFfi) -> RustBuffer {
     return FfiConverterTypeGlobMatcherErrorFFI.lower(value)
 }
 
@@ -6945,7 +6974,7 @@ func FfiConverterTypeHFErrorFFI_lift(_ buf: RustBuffer) throws -> HfErrorFfi {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-func FfiConverterTypeHFErrorFFI_lower(_ value: HfErrorFfi) -> RustBuffer {
+@Sendable func FfiConverterTypeHFErrorFFI_lower(_ value: HfErrorFfi) -> RustBuffer {
     return FfiConverterTypeHFErrorFFI.lower(value)
 }
 
@@ -7035,7 +7064,7 @@ func FfiConverterTypePathKindDTO_lift(_ buf: RustBuffer) throws -> PathKindDto {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-func FfiConverterTypePathKindDTO_lower(_ value: PathKindDto) -> RustBuffer {
+@Sendable func FfiConverterTypePathKindDTO_lower(_ value: PathKindDto) -> RustBuffer {
     return FfiConverterTypePathKindDTO.lower(value)
 }
 
@@ -7187,7 +7216,7 @@ func FfiConverterTypeRepoIdValidationErrorFFI_lift(_ buf: RustBuffer) throws -> 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-func FfiConverterTypeRepoIdValidationErrorFFI_lower(_ value: RepoIdValidationErrorFfi) -> RustBuffer {
+@Sendable func FfiConverterTypeRepoIdValidationErrorFFI_lower(_ value: RepoIdValidationErrorFfi) -> RustBuffer {
     return FfiConverterTypeRepoIdValidationErrorFFI.lower(value)
 }
 
@@ -7271,7 +7300,7 @@ func FfiConverterTypeRepoTreeEntryDTO_lift(_ buf: RustBuffer) throws -> RepoTree
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-func FfiConverterTypeRepoTreeEntryDTO_lower(_ value: RepoTreeEntryDto) -> RustBuffer {
+@Sendable func FfiConverterTypeRepoTreeEntryDTO_lower(_ value: RepoTreeEntryDto) -> RustBuffer {
     return FfiConverterTypeRepoTreeEntryDTO.lower(value)
 }
 
@@ -7345,7 +7374,7 @@ func FfiConverterTypeRepoTypeDTO_lift(_ buf: RustBuffer) throws -> RepoTypeDto {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-func FfiConverterTypeRepoTypeDTO_lower(_ value: RepoTypeDto) -> RustBuffer {
+@Sendable func FfiConverterTypeRepoTypeDTO_lower(_ value: RepoTypeDto) -> RustBuffer {
     return FfiConverterTypeRepoTypeDTO.lower(value)
 }
 
@@ -7454,7 +7483,7 @@ func FfiConverterTypeRequestErrorKindDTO_lift(_ buf: RustBuffer) throws -> Reque
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-func FfiConverterTypeRequestErrorKindDTO_lower(_ value: RequestErrorKindDto) -> RustBuffer {
+@Sendable func FfiConverterTypeRequestErrorKindDTO_lower(_ value: RequestErrorKindDto) -> RustBuffer {
     return FfiConverterTypeRequestErrorKindDTO.lower(value)
 }
 
@@ -7524,7 +7553,7 @@ func FfiConverterTypeSegmentRoleDTO_lift(_ buf: RustBuffer) throws -> SegmentRol
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-func FfiConverterTypeSegmentRoleDTO_lower(_ value: SegmentRoleDto) -> RustBuffer {
+@Sendable func FfiConverterTypeSegmentRoleDTO_lower(_ value: SegmentRoleDto) -> RustBuffer {
     return FfiConverterTypeSegmentRoleDTO.lower(value)
 }
 
@@ -7610,7 +7639,7 @@ func FfiConverterTypeTokenProviderErrorFFI_lift(_ buf: RustBuffer) throws -> Tok
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-func FfiConverterTypeTokenProviderErrorFFI_lower(_ value: TokenProviderErrorFfi) -> RustBuffer {
+@Sendable func FfiConverterTypeTokenProviderErrorFFI_lower(_ value: TokenProviderErrorFfi) -> RustBuffer {
     return FfiConverterTypeTokenProviderErrorFFI.lower(value)
 }
 
@@ -7720,7 +7749,7 @@ func FfiConverterTypeUploadEventDTO_lift(_ buf: RustBuffer) throws -> UploadEven
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-func FfiConverterTypeUploadEventDTO_lower(_ value: UploadEventDto) -> RustBuffer {
+@Sendable func FfiConverterTypeUploadEventDTO_lower(_ value: UploadEventDto) -> RustBuffer {
     return FfiConverterTypeUploadEventDTO.lower(value)
 }
 
@@ -7800,7 +7829,7 @@ func FfiConverterTypeUploadSourceDTO_lift(_ buf: RustBuffer) throws -> UploadSou
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-func FfiConverterTypeUploadSourceDTO_lower(_ value: UploadSourceDto) -> RustBuffer {
+@Sendable func FfiConverterTypeUploadSourceDTO_lower(_ value: UploadSourceDto) -> RustBuffer {
     return FfiConverterTypeUploadSourceDTO.lower(value)
 }
 
@@ -7905,7 +7934,7 @@ func FfiConverterTypeXetOperationDTO_lift(_ buf: RustBuffer) throws -> XetOperat
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-func FfiConverterTypeXetOperationDTO_lower(_ value: XetOperationDto) -> RustBuffer {
+@Sendable func FfiConverterTypeXetOperationDTO_lower(_ value: XetOperationDto) -> RustBuffer {
     return FfiConverterTypeXetOperationDTO.lower(value)
 }
 
@@ -8978,9 +9007,9 @@ fileprivate func uniffiFutureContinuationCallback(handle: UInt64, pollResult: In
     }
 }
 private func uniffiTraitInterfaceCallAsync<T>(
-    makeCall: @escaping () async throws -> T,
-    handleSuccess: @escaping (T) -> (),
-    handleError: @escaping (Int8, RustBuffer) -> (),
+    makeCall: @escaping @Sendable () async throws -> T,
+    handleSuccess: @escaping @Sendable (T) -> (),
+    handleError: @escaping @Sendable (Int8, RustBuffer) -> (),
     droppedCallback: UnsafeMutablePointer<UniffiForeignFutureDroppedCallbackStruct>
 ) {
     let task = Task {
@@ -9009,10 +9038,10 @@ private func uniffiTraitInterfaceCallAsync<T>(
 }
 
 private func uniffiTraitInterfaceCallAsyncWithError<T, E>(
-    makeCall: @escaping () async throws -> T,
-    handleSuccess: @escaping (T) -> (),
-    handleError: @escaping (Int8, RustBuffer) -> (),
-    lowerError: @escaping (E) -> RustBuffer,
+    makeCall: @escaping @Sendable () async throws -> T,
+    handleSuccess: @escaping @Sendable (T) -> (),
+    handleError: @escaping @Sendable (Int8, RustBuffer) -> (),
+    lowerError: @escaping @Sendable (E) -> RustBuffer,
     droppedCallback: UnsafeMutablePointer<UniffiForeignFutureDroppedCallbackStruct>
 ) {
     let task = Task {
@@ -9121,196 +9150,196 @@ private enum InitializationResult {
 // the code inside is only computed once.
 private let initializationResult: InitializationResult = {
     // Get the bindings contract version from our ComponentInterface
-    let bindings_contract_version = 30
+    let bindings_contract_version = 33
     // Get the scaffolding contract version by calling the into the dylib
     let scaffolding_contract_version = ffi_hf_api_rust_uniffi_contract_version()
     if bindings_contract_version != scaffolding_contract_version {
         return InitializationResult.contractVersionMismatch
     }
-    if (uniffi_hf_api_rust_checksum_func_compute_delete_cache_strategy() != 52355) {
+    if (uniffi_hf_api_rust_checksum_func_compute_delete_cache_strategy() != 5080) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_func_execute_delete_cache_strategy() != 51897) {
+    if (uniffi_hf_api_rust_checksum_func_execute_delete_cache_strategy() != 51030) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_func_validate_repo_id_segment_ffi() != 64429) {
+    if (uniffi_hf_api_rust_checksum_func_validate_repo_id_segment_ffi() != 9044) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_ffitokenprovider_get_token() != 17334) {
+    if (uniffi_hf_api_rust_checksum_method_ffitokenprovider_get_token() != 2284) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_operationhandle_cancel() != 64035) {
+    if (uniffi_hf_api_rust_checksum_method_operationhandle_cancel() != 27427) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_operationhandle_is_cancelled() != 42036) {
+    if (uniffi_hf_api_rust_checksum_method_operationhandle_is_cancelled() != 27989) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_datasetinfolistingffi_cancel() != 20541) {
+    if (uniffi_hf_api_rust_checksum_method_datasetinfolistingffi_cancel() != 10092) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_datasetinfolistingffi_is_cancelled() != 9265) {
+    if (uniffi_hf_api_rust_checksum_method_datasetinfolistingffi_is_cancelled() != 63009) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_datasetinfolistingffi_next() != 55248) {
+    if (uniffi_hf_api_rust_checksum_method_datasetinfolistingffi_next() != 9022) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfclientffi_cache_dir() != 21486) {
+    if (uniffi_hf_api_rust_checksum_method_hfclientffi_cache_dir() != 1030) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfclientffi_cache_enabled() != 51188) {
+    if (uniffi_hf_api_rust_checksum_method_hfclientffi_cache_enabled() != 64657) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfclientffi_create_repository() != 16142) {
+    if (uniffi_hf_api_rust_checksum_method_hfclientffi_create_repository() != 35743) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfclientffi_dataset() != 1355) {
+    if (uniffi_hf_api_rust_checksum_method_hfclientffi_dataset() != 22973) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfclientffi_delete_repository() != 45040) {
+    if (uniffi_hf_api_rust_checksum_method_hfclientffi_delete_repository() != 10622) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfclientffi_endpoint() != 64059) {
+    if (uniffi_hf_api_rust_checksum_method_hfclientffi_endpoint() != 59751) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfclientffi_list_datasets() != 8248) {
+    if (uniffi_hf_api_rust_checksum_method_hfclientffi_list_datasets() != 22506) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfclientffi_list_datasets_stream() != 50251) {
+    if (uniffi_hf_api_rust_checksum_method_hfclientffi_list_datasets_stream() != 683) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfclientffi_list_models() != 65341) {
+    if (uniffi_hf_api_rust_checksum_method_hfclientffi_list_models() != 60439) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfclientffi_list_models_stream() != 17287) {
+    if (uniffi_hf_api_rust_checksum_method_hfclientffi_list_models_stream() != 35584) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfclientffi_model() != 15875) {
+    if (uniffi_hf_api_rust_checksum_method_hfclientffi_model() != 35811) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfclientffi_move_repository() != 43588) {
+    if (uniffi_hf_api_rust_checksum_method_hfclientffi_move_repository() != 59400) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfclientffi_scan_cache() != 14817) {
+    if (uniffi_hf_api_rust_checksum_method_hfclientffi_scan_cache() != 21988) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfclientffi_whoami() != 28573) {
+    if (uniffi_hf_api_rust_checksum_method_hfclientffi_whoami() != 51466) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_modelinfolistingffi_cancel() != 55423) {
+    if (uniffi_hf_api_rust_checksum_method_modelinfolistingffi_cancel() != 3970) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_modelinfolistingffi_is_cancelled() != 44981) {
+    if (uniffi_hf_api_rust_checksum_method_modelinfolistingffi_is_cancelled() != 47665) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_modelinfolistingffi_next() != 8480) {
+    if (uniffi_hf_api_rust_checksum_method_modelinfolistingffi_next() != 59631) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_ffiglobmatcher_is_match() != 59938) {
+    if (uniffi_hf_api_rust_checksum_method_ffiglobmatcher_is_match() != 57009) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_ffibytechunkhandler_on_chunk() != 29739) {
+    if (uniffi_hf_api_rust_checksum_method_ffibytechunkhandler_on_chunk() != 34923) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_ffidownloadprogresshandler_on_event() != 30797) {
+    if (uniffi_hf_api_rust_checksum_method_ffidownloadprogresshandler_on_event() != 20748) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_ffiuploadprogresshandler_on_event() != 43726) {
+    if (uniffi_hf_api_rust_checksum_method_ffiuploadprogresshandler_on_event() != 64989) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_create_branch() != 35444) {
+    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_create_branch() != 42157) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_create_commit() != 45921) {
+    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_create_commit() != 58529) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_create_tag() != 56981) {
+    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_create_tag() != 23071) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_delete_branch() != 34820) {
+    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_delete_branch() != 4739) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_delete_file() != 14862) {
+    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_delete_file() != 46161) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_delete_folder() != 36467) {
+    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_delete_folder() != 4480) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_delete_tag() != 25200) {
+    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_delete_tag() != 37973) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_download_file_stream() != 33794) {
+    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_download_file_stream() != 14436) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_download_file_to_cache() != 53306) {
+    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_download_file_to_cache() != 53242) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_exists() != 41604) {
+    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_exists() != 36009) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_get_commit_diff() != 16368) {
+    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_get_commit_diff() != 36229) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_get_file_metadata() != 57428) {
+    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_get_file_metadata() != 14899) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_get_paths_info() != 25683) {
+    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_get_paths_info() != 31078) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_get_raw_diff() != 53802) {
+    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_get_raw_diff() != 11171) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_get_raw_diff_stream() != 35717) {
+    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_get_raw_diff_stream() != 5) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_info_dataset() != 14043) {
+    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_info_dataset() != 34651) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_info_model() != 39145) {
+    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_info_model() != 44298) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_kind() != 51179) {
+    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_kind() != 22740) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_list_commits() != 58546) {
+    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_list_commits() != 1974) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_list_refs() != 5763) {
+    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_list_refs() != 25896) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_list_tree() != 44872) {
+    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_list_tree() != 13811) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_name() != 28614) {
+    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_name() != 37359) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_owner() != 45100) {
+    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_owner() != 27855) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_repo_id() != 58139) {
+    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_repo_id() != 50834) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_snapshot_download() != 19749) {
+    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_snapshot_download() != 5933) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_update_settings() != 14395) {
+    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_update_settings() != 31169) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_upload_file() != 62041) {
+    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_upload_file() != 47634) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_upload_folder() != 35696) {
+    if (uniffi_hf_api_rust_checksum_method_hfrepositoryffi_upload_folder() != 46890) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_constructor_operationhandle_new() != 11419) {
+    if (uniffi_hf_api_rust_checksum_constructor_operationhandle_new() != 40486) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_constructor_hfclientffi_new() != 21324) {
+    if (uniffi_hf_api_rust_checksum_constructor_hfclientffi_new() != 26479) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_constructor_hfclientffi_with_token_provider() != 48099) {
+    if (uniffi_hf_api_rust_checksum_constructor_hfclientffi_with_token_provider() != 31551) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hf_api_rust_checksum_constructor_ffiglobmatcher_try_new() != 49344) {
+    if (uniffi_hf_api_rust_checksum_constructor_ffiglobmatcher_try_new() != 26899) {
         return InitializationResult.apiChecksumMismatch
     }
 
